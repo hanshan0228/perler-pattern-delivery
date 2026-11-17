@@ -1,10 +1,10 @@
 ---
 name: perler-pattern-delivery
-description: "Use for 拼豆图纸、Perler/MARD/Hama bead patterns, photo-to-bead conversion, verified pixel-grid charts, customer delivery sheets, board-split printable PDFs, or revisions of an approved bead design. Locks approved color matrices and prevents AI redraws during layout changes."
+description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mode、MARD color matching, pre-pixelated images, pixel grid alignment, or verified customer bead pattern delivery. Supports candidate generation but strictly locks user-approved MASTER matrices for every customer sheet and printable chart."
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.0.0"
+  version: "2.2.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
@@ -61,7 +61,47 @@ python scripts/perler_delivery.py generate \
 
 处理过程：居中裁剪 → BOX 降采样 → Lab 颜色聚类 → 最接近的 MARD 参考色号。输出候选 CSV 和像素预览。**必须审查五官、花瓣、颗粒噪声，再由顾客确认后单独 freeze**。需要更精细的卡通化时使用外部图像工具，但只能用于生成候选，不得替代已确认 MASTER。
 
-### 模式 C：制作可撤销去背景候选
+### 模式 C：新增真人照片 → 卡通拼豆图（v2.2.0）
+
+**优先使用卡通预处理，再映射拼豆色号，不允许只靠缩小照片来冒充 AI 卡通。**
+
+离线卡通模式（本地、免费、不访问云 API、无需模型权重）：
+
+```bash
+python scripts/perler_delivery.py generate \
+  --image /path/to/photo.jpg --mode cartoon --cartoon-style soft \
+  --grid 87 --colors 33 --filter medium --out ./candidate_cartoon_v1
+```
+
+可选预设：`soft`（默认、柔和平涂/肖像）、`comic`（更明显的描边）、`poster`（平涂海报、较少描边）。三者均是真正的图像预处理：边缘保持滤波 → 平涂减色 → 可控描边，再转换成真实色号矩阵。`cartoon_stage.png` 是**预处理阶段图**，不是顾客施工图。
+
+**更高质量的人物插画化：可选外部 AI 生成器（必须使用已授权模型/服务）。** 若执行环境有图像生成工具，可先使用 [卡通风格说明](references/CARTOON_STYLES.md) 转换照片，待输出文件实际存在后输入到 Skill：
+
+```bash
+python scripts/perler_delivery.py generate \
+  --image /path/to/original.jpg --mode cartoon \
+  --cartoon-engine external --cartoon-image /path/to/licensed_cartoon.png \
+  --grid 87 --colors 33 --filter medium --out ./candidate_ai_v1
+```
+
+`external` **不会自行调用任何付费 API**，也**不会下载 GitHub 模型权重**：它严格读取你已经生成的卡通 PNG。保存输入文件 SHA-256 和 `cartoon_stage.png`，以支持回溯。不能保证外部模型一定保留身份、面部比例和姿势；仍需人工检查。
+
+### 模式 D：已像素化的图 → 拼豆图（v2.2.0）
+
+```bash
+python scripts/perler_delivery.py import-pixel \
+  --image /path/to/pixel_art.png --grid 58 --pixel-cell 16 \
+  --pixel-origin-x 0 --pixel-origin-y 0 --colors 24 \
+  --filter low --out ./candidate_pixel_v1
+```
+
+逐块提取**中央 40% 区域的中位色**，避免把现成图纸的黑色网格线误采成拼豆颜色。可省略 `--pixel-cell`，按图像长宽等比例抽样；如果截图带边距/坐标，需要明确指定尺寸与原点，自动偏移仅为尽力估计。禁止宣称任意截图都可 100% 恢复格点。
+
+### 候选过滤参数
+
+`--filter none|low|medium|high`，仅作用于 **UNAPPROVED 候选**。默认 photo / pixel 为 none，cartoon 为 medium。`high` 减少更多小孤立块但可能伤及眼睛、嘴巴和花瓣细节；如果用户已有满意的图纸，必须保持原 MASTER 不变。
+
+### 模式 E：制作可撤销去背景候选
 
 ```bash
 python scripts/perler_delivery.py remove-background \
@@ -109,3 +149,14 @@ python scripts/perler_delivery.py remove-background \
 简要报告：当前使用的 MASTER 版本（SHA-256 前 12 位）、网格尺寸、空格数、实际豆数、颜色种数、板块数量、校验是否通过、链接到顾客单页图 / PDF / 分板施工图 / 清单，并说明参考色卡与实物的差异风险。
 
 遇到技术和兼容问题查看 [技术说明](references/TECHNICAL.md)；来源与许可证说明见 [来源](references/SOURCES.md)。
+
+## 卡通模式新增验收要求（v2.2）
+
+- 保留照片模式旧行为；不可将默认 `generate` 偷偷升级为卡通。
+- 本地离线卡通是传统图像处理，不得自称等同于 photo2cartoon 或 AnimeGANv2 的神经网络效果。
+- 高质量 AI 卡通候选必须标注外部来源，不下载或捆绑未授权模型，不默默传输私人人像。
+- 所有新候选都输出 `candidate_matrix.csv`、`candidate_preview.png`、`candidate_codes.png`、`candidate_info.json`；cartoon 额外输出 `cartoon_stage.png`。
+- 像素导入必须以格子中心统计颜色，禁止 BOX 重采样把黑网格线混进豆色。
+- 所有新生成图均需要确认，然后单独 `freeze`；冻结后的生产交付依然由旧版 `deliver` 和 `verify` 完成。
+- 每次修改脚本后运行 `python -m unittest discover -s tests -v`，且必须保留已确认 58×58 和 87×87 的哈希回归测试。
+- 商业使用遵守第三方模型和数据的许可证；参见 `references/SOURCES.md`。

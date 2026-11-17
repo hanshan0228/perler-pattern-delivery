@@ -23,6 +23,9 @@ from collections import deque
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
+# Keep sibling processors importable even when this script is loaded by an external agent.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 PALETTE = ROOT / "assets" / "mard_palette.json"
 EMPTY = "EMPTY"
 MANIFEST_NAME = "master_manifest.json"
@@ -525,18 +528,12 @@ def srgb_lab(rgb_values):
     return np.stack([116*fy-16,500*(fx-fy),200*(fy-fz)],axis=-1)
 
 
-def quantize_photo(path: Path, n: int, colors: int, palette):
+def quantize_pixels(arr, n: int, colors: int, palette):
+    """Quantize one RGB sample per logical cell; do not silently interpolate."""
     import numpy as np
-    with Image.open(path) as im:
-        im=im.convert('RGBA')
-        bg=Image.new('RGBA',im.size,(255,255,255,255));bg.alpha_composite(im)
-        im=bg.convert('RGB')
-        w,h=im.size
-        if w>h:
-            left=(w-h)//2;im=im.crop((left,0,left+h,h))
-        elif h>w:
-            top=(h-w)//2;im=im.crop((0,top,w,top+w))
-        arr=np.asarray(im.resize((n,n),Image.Resampling.BOX),dtype=np.float64).reshape(-1,3)
+    arr=np.asarray(arr,dtype=np.float64).reshape(-1,3)
+    if len(arr)!=n*n:
+        raise PatternError('RGB samples do not match requested square grid')
     data=srgb_lab(arr)
     k=min(colors,len(data)); rng=np.random.default_rng(42)
     centers=np.empty((k,3)); centers[0]=data[rng.integers(len(data))]
@@ -565,26 +562,95 @@ def quantize_photo(path: Path, n: int, colors: int, palette):
     return [mapped[i*n:(i+1)*n] for i in range(n)]
 
 
+
+
+def quantize_photo(path: Path, n: int, colors: int, palette):
+    from cartoon_pipeline import open_rgb
+    im=open_rgb(path, max_side=1200)
+    return quantize_image(im, n, colors, palette)
+
+
+def quantize_image(im, n: int, colors: int, palette):
+    from PIL import Image
+    im=im.convert('RGB')
+    w,h=im.size
+    if w>h:
+        left=(w-h)//2;im=im.crop((left,0,left+h,h))
+    elif h>w:
+        top=(h-w)//2;im=im.crop((0,top,w,top+w))
+    arr=__import__('numpy').asarray(im.resize((n,n),Image.Resampling.BOX),dtype='float64')
+    return quantize_pixels(arr,n,colors,palette)
+
 def generate(args):
     if not 1<=args.grid<=145 or not 1<=args.colors<=120:
         raise PatternError('grid 需为 1..145, colors 需为 1..120')
-    photo=Path(args.image)
-    if not photo.is_file(): raise PatternError('照片不存在')
+    source=Path(args.image)
+    if not source.is_file(): raise PatternError('输入图片不存在')
     root=Path(args.out)
     if root.exists(): raise PatternError('候选目录已存在，禁止覆盖')
     palette=load_palette(PALETTE)
-    rows=quantize_photo(photo,args.grid,args.colors,palette)
-    counts,_,w,h=stats(rows,palette)
+    mode=getattr(args,'mode','photo')
+    filter_level=getattr(args,'filter',None) or ('medium' if mode=='cartoon' else 'none')
+    if filter_level not in {'none','low','medium','high'}:
+        raise PatternError('filter 仅支持 none, low, medium, high')
+    stage=None
+    details={}
+    if mode=='cartoon':
+        from cartoon_pipeline import cartoonize, open_rgb
+        style=getattr(args,'cartoon_style','soft')
+        engine=getattr(args,'cartoon_engine','offline')
+        if engine=='offline':
+            stage=cartoonize(open_rgb(source),style=style)
+            details={'cartoon_engine':'offline','cartoon_style':style,
+                     'cartoon_definition':'edge-preserving smoothing, posterization, and controlled contour overlay'}
+        elif engine=='external':
+            stage_path=getattr(args,'cartoon_image',None)
+            if not stage_path or not Path(stage_path).is_file():
+                raise PatternError('external 引擎要求 --cartoon-image，且文件必须存在')
+            stage=open_rgb(Path(stage_path))
+            details={'cartoon_engine':'external','cartoon_style':'provided_by_external_model',
+                     'external_image_sha256':sha_file(Path(stage_path)),
+                     'external_image_name':Path(stage_path).name}
+        else:
+            raise PatternError('未知卡通引擎')
+        rows=quantize_image(stage,args.grid,args.colors,palette)
+    elif mode=='pixel':
+        from candidate_processing import sample_pixel_art
+        from cartoon_pipeline import open_rgb
+        pixels,alignment=sample_pixel_art(open_rgb(source, max_side=5000),grid=args.grid,
+                                           pixel_cell=getattr(args,'pixel_cell',None),
+                                           origin_x=getattr(args,'pixel_origin_x',None),
+                                           origin_y=getattr(args,'pixel_origin_y',None))
+        rows=quantize_pixels(pixels,args.grid,args.colors,palette)
+        details={'pixel_alignment':alignment}
+    elif mode=='photo':
+        rows=quantize_photo(source,args.grid,args.colors,palette)
+    else:
+        raise PatternError('mode 仅支持 photo, cartoon, pixel')
+    from candidate_processing import cleanup
+    rows,changes=cleanup(rows,strength=filter_level)
+    counts,empty,w,h=stats(rows,palette)
     root.mkdir(parents=True)
+    if stage is not None:
+        stage.save(root/'cartoon_stage.png')
     write_matrix(root/'candidate_matrix.csv',rows)
     save_preview(rows,palette,root/'candidate_preview.png')
     render_grid(rows,palette,cell=40).save(root/'candidate_codes.png')
-    (root/'candidate_info.json').write_text(json.dumps({'status':'UNAPPROVED','width':w,'height':h,'colors':len(counts),'beads':w*h,'input_image_sha256':sha_file(photo),'workflow':'BOX -> CIELAB K-means -> closest MARD reference color'},ensure_ascii=False,indent=2),encoding='utf8')
-    print(f'UNAPPROVED CANDIDATE: {w}x{h}, {len(counts)} colors; human approval required before freeze')
+    info={'status':'UNAPPROVED','width':w,'height':h,'colors':len(counts),
+          'beads':w*h-empty,'empty':empty,'mode':mode,'filter':filter_level,
+          'filter_report':changes,'input_image_sha256':sha_file(source),
+          'workflow':('cartoon preprocessing -> BOX -> CIELAB K-means -> MARD -> candidate cleanup'
+                      if mode=='cartoon' else
+                      'central-median pixel alignment -> CIELAB K-means -> MARD -> candidate cleanup'
+                      if mode=='pixel' else
+                      'BOX -> CIELAB K-means -> closest MARD reference color'),**details}
+    if stage is not None: info['cartoon_stage_sha256']=sha_file(root/'cartoon_stage.png')
+    (root/'candidate_info.json').write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf8')
+    print(f'UNAPPROVED CANDIDATE ({mode}): {w}x{h}, {len(counts)} colors; {changes["modified_cells"]} modified by filter; human approval required before freeze')
 
 
 def parser():
-    ap=argparse.ArgumentParser(description='Perler/MARD pixel-locked pattern generation & customer delivery v2')
+    ap=argparse.ArgumentParser(description='Perler/MARD cartoon + pixel-locked pattern generation & customer delivery v2.2')
     sub=ap.add_subparsers(dest='command',required=True)
     p=sub.add_parser('freeze',help='Save approved matrix as immutable master')
     p.add_argument('--matrix',required=True);p.add_argument('--out',required=True)
@@ -597,9 +663,27 @@ def parser():
     p=sub.add_parser('remove-background',help='Remove edge-connected color, produce UNAPPROVED candidate CSV')
     p.add_argument('--master',required=True);p.add_argument('--background-code',required=True)
     p.add_argument('--out',required=True);p.set_defaults(func=remove_background)
-    p=sub.add_parser('generate',help='Quantize an original photo to UNAPPROVED candidate CSV')
+    p=sub.add_parser('generate',help='Produce UNAPPROVED candidate from photo, cartoon, or existing pixel art')
     p.add_argument('--image',required=True);p.add_argument('--grid',type=int,default=58)
-    p.add_argument('--colors',type=int,default=28);p.add_argument('--out',required=True);p.set_defaults(func=generate)
+    p.add_argument('--colors',type=int,default=28);p.add_argument('--out',required=True)
+    p.add_argument('--mode',choices=['photo','cartoon','pixel'],default='photo')
+    p.add_argument('--filter',choices=['none','low','medium','high'],default=None)
+    p.add_argument('--cartoon-style',choices=['soft','comic','poster'],default='soft')
+    p.add_argument('--cartoon-engine',choices=['offline','external'],default='offline')
+    p.add_argument('--cartoon-image',help='Image already stylized by your licensed AI model; required by external cartoon engine')
+    p.add_argument('--pixel-cell',type=int,help='Pixels per bead cell when importing pixel art')
+    p.add_argument('--pixel-origin-x',type=int,help='Grid start X in source pixels')
+    p.add_argument('--pixel-origin-y',type=int,help='Grid start Y in source pixels')
+    p.set_defaults(func=generate)
+    p=sub.add_parser('import-pixel',help='Import pre-pixelated art using central sampling, avoiding resampling color bleed')
+    p.add_argument('--image',required=True);p.add_argument('--grid',type=int,default=58)
+    p.add_argument('--colors',type=int,default=28);p.add_argument('--out',required=True)
+    p.add_argument('--filter',choices=['none','low','medium','high'],default=None)
+    p.add_argument('--pixel-cell',type=int)
+    p.add_argument('--pixel-origin-x',type=int)
+    p.add_argument('--pixel-origin-y',type=int)
+    p.set_defaults(func=generate,mode='pixel')
+
     return ap
 
 

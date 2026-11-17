@@ -1,4 +1,4 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.2.0
 
 这是实际可运行的 Agent Skill，而不是提示词合集。
 
@@ -19,6 +19,35 @@ python scripts/perler_delivery.py freeze --matrix examples/approved_87x87.csv --
 python scripts/perler_delivery.py deliver --master ./project/master --out ./project/delivery
 python scripts/perler_delivery.py verify --master ./project/master --delivery ./project/delivery
 ```
+
+## 新增：一键卡通模式（v2.2）
+
+内置离线滤镜：柔和卡通 `soft`、漫画描边 `comic`、平涂海报 `poster`。这是无网络/无模型的传统算法，**不等同于生成式 AI 卡通人像**。
+
+```bash
+python scripts/perler_delivery.py generate --image /path/photo.jpg --mode cartoon \
+  --cartoon-style soft --grid 87 --colors 33 --filter medium --out ./candidate_cartoon
+```
+
+如果需要之前那种更精细的 AI 插画风格，先用你有权使用的图像模型生成卡通 PNG，再交给本 Skill：
+
+```bash
+python scripts/perler_delivery.py generate --image /path/photo.jpg --mode cartoon \
+  --cartoon-engine external --cartoon-image /path/cartoon.png \
+  --grid 87 --colors 33 --out ./candidate_ai
+```
+
+**当前 CLI 不会自动访问图片 API，不需要配置 API Key，不会把私人照片上传到网络。** 对外部图片的模型/服务商业授权需要自行核查。优先人工审核候选图的五官、嘴型、头发与花朵，选定版本后冻结。
+
+已像素化的图片支持：
+
+```bash
+python scripts/perler_delivery.py import-pixel --image /path/pixel.png --grid 58 \
+  --pixel-cell 16 --pixel-origin-x 0 --pixel-origin-y 0 --colors 24 \
+  --filter low --out ./candidate_pixel
+```
+
+所有新候选都保存预处理阶段、CSV 色号矩阵和信息记录；已有 MASTER 不能随意修改。
 
 ## 新图片流程
 

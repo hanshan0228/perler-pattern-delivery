@@ -1,14 +1,20 @@
-# 可核验回归报告（2026-11-17）
+# Validation report — v2.2.0
 
-项目：perler-pattern-delivery 2.0.0
+Run locally with:
 
-- 已确认 58×58：20 个参考色号，3,364 颗，0 个空格，4 块 29×29 板。色号矩阵 SHA-256: `316307e8157a1086fbe5af9691a163c0859d8d0099ffd9e1ce097173d56c9c3f`。
-- 已确认 87×87：33 个参考色号，7,569 颗，0 个空格，9 块 29×29 板。色号矩阵 SHA-256: `8c7bcbb1ad12ac1257b38c89496b1924f93fb40cc06a50c7859d1d2b201e6fc5`。
-- 使用 87×87 主版本实际运行了 freeze → deliver → verify，校验成功。
-- 使用 58×58 主版本实际运行了 freeze → deliver → verify，校验成功。
-- `remove-background` 在 87×87 原矩阵上移除边缘 4 连通 H19 背景 1,849 格，输出为未确认候选；MASTER 不变。
-- 使用一张 JPEG 实际运行了 generate，产出未确认 58×58 候选；此结果不应当冒充用户已确认版本。
-- 已检查 87×87 顾客单页 PDF：1 页 A2；分板彩色 PDF：9 页 A4。
-- 使用 Python unittest 跑通 10 项测试，包括未知色号拒绝、空位透明、严格 CSV、JSON 编辑器兼容、颜色数与历史 SHA 回归、冻结版本不可覆盖、篡改拦截、分板完整性以及图片转图纸候选生成。
+```bash
+python -m unittest discover -s tests -v
+```
 
-说明：以上验证针对本环境运行；目标计算机仍需要安装 Pillow、NumPy、ReportLab 及合适字体，必要时按当前平台重新执行验收。
+**17 tests passed** in this build environment. Checks include:
+
+- MARD 291 reference colors, approved 58×58 (20 colors) and 87×87 (33 colors) matrices, SHA-256 row-code digests unchanged.
+- Strict CSV/JSON reading, transparent EMPTY, 29×29 board partitioning.
+- Master freeze, mutation rejection, unchanged customer delivery verification.
+- Offline `soft`, `comic`, and `poster` generate new visual stages on a textured synthetic portrait.
+- Cartoon CLI produces a real one-code-per-cell 29×29 matrix and a reference stage PNG.
+- External stylized-image import requires an actual file and records its SHA-256.
+- Central cell sampling avoids a synthetic grid line; cleanup operates on copies and preserves input.
+- End-to-end candidate→master→deliver→verify succeeded.
+
+This suite validates data integrity, not universal portrait likeness or physical bead color calibration. Manual review of facial features, hair, flowers and thin structural details is mandatory before freezing any new design.
