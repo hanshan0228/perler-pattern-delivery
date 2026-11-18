@@ -1,4 +1,8 @@
-# Perler Pattern Delivery Skill v2.6.0
+# Perler Pattern Delivery Skill v2.7.0
+
+## v2.7: Reviewed regions and readable print output
+
+Provide reviewed normalized polygons via `--regions` to add an optional `finish` candidate; optionally lower its budget with `--finish-colors`. Skin constraints apply only to source-supported warm cells, with protected features locked. This is not automatic segmentation. New first sheets and approved deliveries use contrast-maximizing text and color/monochrome A4 board pages, verified by rerendering. Existing master data and legacy verification are preserved. See [REGION_PRINT.md](references/REGION_PRINT.md).
 
 ## v2.6: Portrait candidate optimization
 

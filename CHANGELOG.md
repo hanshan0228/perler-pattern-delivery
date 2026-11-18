@@ -1,3 +1,10 @@
+## v2.7.0 — Reviewed region color refinement and readable boards
+
+- Optional region-aware `finish` variant with explicit protected polygons, source-dependent warm-skin constraints, localized continuity and conservative rare-color handling.
+- Separate finish color budget; keep original candidates and require actual visual review.
+- New candidate and approved charts maximize black/white label contrast and include larger A4 color/monochrome board labels. First sheet verification covers both board PDFs and every board PNG. Legacy render verification remains available.
+- Six new targeted tests; unchanged MARD dataset and approved matrix fixtures.
+
 ## v2.6.0 — Regional palette refinement and spatial coherence
 
 - Five reviewed candidate variants, including bounded actual-count palette swaps and same-code-set source-aware spatial regularization. No-op if hard error/continuity guards fail.

@@ -1,4 +1,8 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.6.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.7.0
+
+## v2.7：区域配色与打印可读性
+
+支持经过人工检查的归一化多边形 `--regions`（皮肤/头发/衣服/背景/锁定细节），新增 `finish` 候选和可选 `--finish-colors` 采购预算。不是自动人脸分割，不能保证审美提升。既有候选保留。新首稿及 MASTER 派生交付自动生成高对比色号和 A4 彩色、黑白分板，逐页重渲染验证。已冻结矩阵不变。详见 [REGION_PRINT.md](references/REGION_PRINT.md)。
 
 ## v2.6 人像视觉优化
 

@@ -147,6 +147,11 @@ def luminance(v):
     return 0.2126*linear[0] + 0.7152*linear[1] + 0.0722*linear[2]
 
 
+def contrast_ink(bg):
+    L=luminance("#"+"".join(c*2 for c in bg[1:]) if len(bg)==4 else bg)
+    return '#000000' if (L+.05)/.05>=1.05/(L+.05) else '#FFFFFF'
+
+
 def font(size, bold=False):
     override = os.environ.get('PINDOU_FONT')
     candidates = [override,
@@ -221,7 +226,7 @@ def verify_png(path, expected):
             raise PatternError(f'实际图纸与矩阵重新渲染结果不一致: {path.name}')
 
 
-def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29):
+def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29, readable=False):
     h,w = len(rows),len(rows[0])
     margin= max(36,cell)
     canvas = Image.new("RGB", (w*cell+2*margin+1,h*cell+2*margin+1), "#ffffff")
@@ -237,6 +242,7 @@ def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29
                 if bw: fg='#202020'
                 elif code==EMPTY: fg='#a7a7a7'
                 else: fg='#ffffff' if luminance(bg)<0.24 else '#26202a'
+                if readable: fg=contrast_ink(bg)
                 draw.text((x0+cell/2,y0+cell/2),label,font=f,fill=fg,anchor='mm')
     for c in range(w+1):
         major= board_line>0 and c%board_line==0
@@ -248,7 +254,7 @@ def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29
     return canvas
 
 
-def render_customer(rows, palette, title, board_size, counts, empty, out=None, *, approved=True):
+def render_customer(rows, palette, title, board_size, counts, empty, out=None, *, approved=True, readable=False):
     actual,actual_empty,_,_=stats(rows,palette)
     if actual!=counts or actual_empty!=empty or not 1<=board_size<=29:
         raise PatternError("图例统计或拼板规格无效")
@@ -294,6 +300,7 @@ def render_customer(rows, palette, title, board_size, counts, empty, out=None, *
             bg=fill_for(code,palette)
             d.rectangle((x0,y0,x0+cell-1,y0+cell-1),fill=bg)
             fg=('#a0a0a0' if code==EMPTY else ('#fff' if luminance(bg)<.24 else '#272028'))
+            if readable: fg=contrast_ink(bg)
             d.text((x0+cell/2,y0+cell/2),('×' if code==EMPTY else code),font=gf,fill=fg,anchor='mm')
     for c in range(w+1):
         xp=x+c*cell
@@ -325,7 +332,7 @@ def render_customer(rows, palette, title, board_size, counts, empty, out=None, *
     return img
 
 
-def render_board(page, palette, board_r,board_c, yoffset,xoffset, *, bw=False, size=29, global_w=None,global_h=None):
+def render_board(page, palette, board_r,board_c, yoffset,xoffset, *, bw=False, size=29, global_w=None,global_h=None, readable=False):
     rows=page; h,w=len(rows),len(rows[0]); W,H=2300,3050
     im=Image.new('RGB',(W,H),'#fff'); d=ImageDraw.Draw(im)
     title=f'第 {board_r} 行 · 第 {board_c} 列 | '+('黑白施工稿' if bw else '彩色施工稿')
@@ -333,7 +340,7 @@ def render_board(page, palette, board_r,board_c, yoffset,xoffset, *, bw=False, s
     d.text((120,195),f'全局行 {yoffset+1}–{yoffset+h} · 列 {xoffset+1}–{xoffset+w}    ({w}×{h})',font=font(40),fill='#72616a')
     csize=min(68,int(2020/max(size, w, h)))
     ox=(W-w*csize)//2; oy=360
-    f=fitted_font(("×" if c==EMPTY else c for row in rows for c in row),csize-8,csize-8,max(18,int(csize*.42)))
+    f=fitted_font(("×" if c==EMPTY else c for row in rows for c in row),csize-8,csize-8,max(18,int(csize*(.54 if readable else .42))))
     for r,row in enumerate(rows):
         for c,cd in enumerate(row):
             x=ox+c*csize; y=oy+r*csize
@@ -341,6 +348,7 @@ def render_board(page, palette, board_r,board_c, yoffset,xoffset, *, bw=False, s
             d.rectangle((x,y,x+csize-1,y+csize-1),fill=fill)
             label='×' if cd==EMPTY else cd
             fg='#1e1e1e' if bw else ('#a0a0a0' if cd==EMPTY else ('#fff' if luminance(fill)<.24 else '#28212a'))
+            if readable: fg=contrast_ink(fill)
             d.text((x+csize/2,y+csize/2),label,font=f,fill=fg,anchor='mm')
     for c in range(w+1):
         x=ox+c*csize
@@ -465,22 +473,22 @@ def deliver(args):
     shutil.copyfile(master/meta['palette_file'],root/'palette.json')
     semantic_image(rows,palette).save(root/'semantic_pixels.png')
     save_preview(rows,palette,root/'pixel_preview.png')
-    render_grid(rows,palette,cell=min(50,max(24,3800//max(meta['width'],meta['height']))),board_line=n).save(root/'pattern_with_codes.png')
-    render_customer(rows,palette,meta['name'],n,counts,empty,root/'customer_sheet.png')
+    render_grid(rows,palette,cell=min(50,max(24,3800//max(meta['width'],meta['height']))),board_line=n,readable=True).save(root/'pattern_with_codes.png')
+    render_customer(rows,palette,meta['name'],n,counts,empty,root/'customer_sheet.png',readable=True)
     pdf_from_images([root/'customer_sheet.png'],root/'customer_sheet_A2.pdf','A2')
     legend_csv(root/'legend.csv',counts,palette)
     boarddir=root/'boards'; boarddir.mkdir()
     images_color=[];images_bw=[]
     for i,(r,c,y,x,part) in enumerate(boards(rows,n),start=1):
         colored=boarddir/f'board_{i:02d}_color.png'; blackwhite=boarddir/f'board_{i:02d}_bw.png'
-        render_board(part,palette,r,c,y,x,bw=False,size=n).save(colored,optimize=True)
-        render_board(part,palette,r,c,y,x,bw=True,size=n).save(blackwhite,optimize=True)
+        render_board(part,palette,r,c,y,x,bw=False,size=n,readable=True).save(colored,optimize=True)
+        render_board(part,palette,r,c,y,x,bw=True,size=n,readable=True).save(blackwhite,optimize=True)
         images_color.append(colored);images_bw.append(blackwhite)
     pdf_from_images(images_color,root/'boards_color_A4.pdf')
     pdf_from_images(images_bw,root/'boards_bw_A4.pdf')
     allpaths=sorted(p for p in root.rglob('*') if p.is_file())
     validation={
-        'format':'perler-pattern-delivery-validation-v3',
+        'format':'perler-pattern-delivery-validation-v4',
         'master_matrix_sha256':meta['matrix_sha256'],
         'master_palette_sha256':meta['palette_sha256'],
         'codes_sha256':meta['codes_sha256'],
@@ -505,13 +513,14 @@ def verify_master_delivery(master,root):
     verpath=root/'validation.json'
     if not verpath.is_file(): raise PatternError('交付目录缺少 validation.json')
     v=json.loads(verpath.read_text(encoding='utf8'))
-    if v.get('format')!='perler-pattern-delivery-validation-v3':
+    if v.get('format') not in ('perler-pattern-delivery-validation-v3','perler-pattern-delivery-validation-v4'):
         raise PatternError('旧交付包不含渲染校验；请用原 MASTER 重新 deliver 到新目录')
     for key,ref in [('master_matrix_sha256','matrix_sha256'),('master_palette_sha256','palette_sha256'),('codes_sha256','codes_sha256')]:
         if v.get(key)!=meta[ref]: raise PatternError('交付与冻结 MASTER 指纹不一致：'+key)
     expect={'width':meta['width'],'height':meta['height'],'beads':sum(counts.values()),'colors':len(counts),'empty':empty,'board_size':meta['board_size'],'board_count':len(boards(rows,meta['board_size']))}
     for key,val in expect.items():
         if v.get(key)!=val: raise PatternError('交付统计不一致：'+key)
+    readable=v['format']=='perler-pattern-delivery-validation-v4'
     n=meta['board_size']
     pieces=boards(rows,n)
     required={'master_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','pattern_with_codes.png','customer_sheet.png','customer_sheet_A2.pdf','legend.csv','boards_color_A4.pdf','boards_bw_A4.pdf'}
@@ -535,13 +544,13 @@ def verify_master_delivery(master,root):
     if sha_file(root/'master_matrix.csv')!=meta['matrix_sha256'] or sha_file(root/'palette.json')!=meta['palette_sha256']:
         raise PatternError('交付包矩阵/色卡与 MASTER 不符')
     verify_png(root/'pixel_preview.png',preview_image(rows,palette))
-    verify_png(root/'pattern_with_codes.png',render_grid(rows,palette,cell=min(50,max(24,3800//max(meta['width'],meta['height']))),board_line=n))
-    verify_png(root/'customer_sheet.png',render_customer(rows,palette,meta['name'],n,counts,empty))
+    verify_png(root/'pattern_with_codes.png',render_grid(rows,palette,cell=min(50,max(24,3800//max(meta['width'],meta['height']))),board_line=n,readable=readable))
+    verify_png(root/'customer_sheet.png',render_customer(rows,palette,meta['name'],n,counts,empty,readable=readable))
     color_pages=[]; bw_pages=[]
     for i,(r,c,y,x,part) in enumerate(pieces,1):
         for kind,bw,pages in [('color',False,color_pages),('bw',True,bw_pages)]:
             path=root/'boards'/f'board_{i:02d}_{kind}.png'
-            verify_png(path,render_board(part,palette,r,c,y,x,bw=bw,size=n)); pages.append(path)
+            verify_png(path,render_board(part,palette,r,c,y,x,bw=bw,size=n,readable=readable)); pages.append(path)
     verify_pdf([root/'customer_sheet.png'],root/'customer_sheet_A2.pdf','A2')
     verify_pdf(color_pages,root/'boards_color_A4.pdf','A4')
     verify_pdf(bw_pages,root/'boards_bw_A4.pdf','A4')

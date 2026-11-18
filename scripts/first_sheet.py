@@ -27,6 +27,7 @@ def checks_for(mode):
     if mode=='cartoon': return CHECKS
     raise p.PatternError('invalid portrait mode')
 VARIANTS = ('detail', 'flat', 'portrait', 'regional', 'coherent')
+ALL_VARIANTS = VARIANTS + ('finish',)
 CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
           'key_features_readable', 'clean_regions_and_no_artifacts')
 
@@ -74,9 +75,12 @@ def make_comparison(root, original, stage, variants, palette, mode="cartoon"):
     labels=['Original reference','AI cartoon base' if mode=='cartoon' else 'Photo source',
             'Detail - central median','Flat - area mean','Portrait - MARD constrained','Regional - palette swaps','Coherent - spatial refinement']
     benchmark=p.semantic_image(p.read_matrix(p.ROOT/'examples'/'approved_87x87.csv'),palette)
-    images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS],benchmark]
+    images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS]]
+    if 'finish' in variants:
+        images.append(p.semantic_image(variants['finish'],palette)); labels.append('Region-aware finish')
+    images.append(benchmark)
     labels.append('Approved style benchmark (87)')
-    canvas=Image.new('RGB',(1830,1090),'#f7f3ef');d=ImageDraw.Draw(canvas)
+    canvas=Image.new('RGB',(1830,70+510*((len(images)+3)//4)),'#f7f3ef');d=ImageDraw.Draw(canvas)
     d.text((25,15),'FIRST SHEET / VISUAL REVIEW - compare actual pixel candidates',font=p.font(26,True),fill='#30282e')
     for i,(im,label) in enumerate(zip(images,labels)):
         x=25+(i%4)*450;y=65+(i//4)*510
@@ -113,8 +117,19 @@ def prepare(args):
     stage.save(root/stage_file)
     reference=samples(stage,args.grid,'flat')
     variants={}; metadata={}; scores={}
-    for v in VARIANTS:
-        if v=='regional':
+    region_arg=getattr(args,'regions',None)
+    region_spec=load(Path(region_arg)) if region_arg else None
+    if region_spec is not None:
+        import region_finish
+        require(isinstance(region_spec,list) and bool(region_spec),'regions must be a nonempty polygon list')
+        region_finish.masks(args.grid,region_spec)
+    finish_colors=getattr(args,'finish_colors',None) or args.colors
+    require(1<=finish_colors<=args.colors,'finish-colors must not exceed overall budget')
+    active=ALL_VARIANTS if region_spec is not None else VARIANTS
+    for v in active:
+        if v=='finish':
+            rows,finish_report=region_finish.optimize(reference,variants['coherent'],palette,region_spec,max_colors=finish_colors)
+        elif v=='regional':
             rows,regional_report=spatial.refine_palette(reference,variants['portrait'],palette,regions)
         elif v=='coherent':
             rows,spatial_report=spatial.regularize(reference,variants['portrait'],palette,regions)
@@ -144,6 +159,8 @@ def prepare(args):
               'focus_regions':regions,'quality_metrics':scores,
               'spatial_report':spatial_report,'regional_report':regional_report,'pareto_diagnostics':spatial.pareto(scores),
               'quality_metric_reference':'all variants versus same area-average stage; weighted Delta E76, not likeness score'}
+    if region_spec is not None:
+        manifest.update(region_spec=region_spec,finish_report=finish_report,finish_colors=finish_colors)
     dump(root/'prepare.json',manifest)
     dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
          'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in checks},'notes':''})
@@ -151,7 +168,7 @@ def prepare(args):
 
 
 def verified_variant(root, v):
-    require(v in VARIANTS,'unknown variant')
+    require(v in ALL_VARIANTS,'unknown variant')
     meta=load(root/'prepare.json')
     require(meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA,LEGACY_SCHEMA) and meta['status']=='UNAPPROVED','invalid prepare manifest')
     mode=meta['mode']; checks_for(mode)
@@ -184,6 +201,11 @@ def verified_variant(root, v):
                 _,baseline,_,_,_=verified_variant(root,'portrait')
                 expected,report=spatial.refine_palette(reference,baseline,palette,meta['focus_regions'])
                 require(rows==expected and meta['regional_report']==report,'regional refinement mismatch')
+            if v=='finish':
+                import region_finish
+                _,baseline,_,_,_=verified_variant(root,'coherent')
+                expected,report=region_finish.optimize(reference,baseline,palette,meta['region_spec'],max_colors=meta['finish_colors'])
+                require(rows==expected and meta['finish_report']==report,'region finish mismatch')
             if v=='coherent':
                 _,baseline,_,_,_=verified_variant(root,'portrait')
                 expected,report=spatial.regularize(reference,baseline,palette,meta['focus_regions'])
@@ -201,8 +223,9 @@ def review_ok(review,meta,v):
 def verify_diagnostics(root, meta):
     if meta['schema']!=SCHEMA: return
     import spatial_quality as spatial
-    require(set(meta['variants'])==set(VARIANTS) and set(meta['quality_metrics'])==set(VARIANTS),'incomplete candidate set')
-    for variant in VARIANTS:
+    active=ALL_VARIANTS if 'region_spec' in meta else VARIANTS
+    require(set(meta['variants'])==set(active) and set(meta['quality_metrics'])==set(active),'incomplete candidate set')
+    for variant in active:
         verified_variant(root,variant)
     require(meta['pareto_diagnostics']==spatial.pareto(meta['quality_metrics']),'Pareto diagnostics mismatch')
 
@@ -219,14 +242,16 @@ def select(args):
     p.semantic_image(rows,palette).save(out/'semantic_pixels.png')
     p.save_preview(rows,palette,out/'pixel_preview.png')
     p.legend_csv(out/'legend.csv',counts,palette)
-    p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid']))).save(out/'pattern_with_codes.png')
-    p.render_customer(rows,palette,args.name,29,counts,empty,out/'candidate_sheet.png',approved=False)
+    p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid'])),readable=True).save(out/'pattern_with_codes.png')
+    p.render_customer(rows,palette,args.name,29,counts,empty,out/'candidate_sheet.png',approved=False,readable=True)
     p.pdf_from_images([out/'candidate_sheet.png'],out/'candidate_sheet_A2.pdf','A2')
+    import print_contract as printing
+    printing.make_boards(out,rows,palette)
     dump(out/'visual_review.json',review)
     info={'schema':SCHEMA,'status':'UNAPPROVED','mode':meta['mode'],'variant':args.variant,'grid':meta['grid'],
           'codes_sha256':p.digest_codes(rows),'name':args.name,'colors':len(counts),'beads':sum(counts.values()),'empty':empty,
           'board_count':len(p.boards(rows,29)),'visual_review':'recorded, NOT customer approval',
-          'files':{f.name:p.sha_file(f) for f in out.iterdir()}}
+          'print_version':2,'files':{f.relative_to(out).as_posix():p.sha_file(f) for f in out.rglob('*') if f.is_file()}}
     dump(out/'candidate_validation.json',info)
     verify(args=argparse.Namespace(prepared=str(root),sheet=str(out)))
     print('FIRST SHEET READY: candidate_sheet.png. Await explicit customer approval before freeze.')
@@ -241,6 +266,10 @@ def verify(args):
     verify_diagnostics(root,meta)
     review_ok(load(out/'visual_review.json'),meta,v)
     required={'candidate_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','legend.csv','pattern_with_codes.png','candidate_sheet.png','candidate_sheet_A2.pdf','visual_review.json'}
+    readable=info.get('print_version')==2
+    if readable:
+        import print_contract as printing
+        required.update(printing.board_paths(rows))
     require(set(info['files'])==required,'incomplete first sheet file list')
     for fn,sha in info['files'].items(): require(p.sha_file(out/fn)==sha,f'{fn} changed')
     require(p.read_matrix(out/'candidate_matrix.csv')==rows and p.digest_codes(rows)==info['codes_sha256'],'selected matrix changed')
@@ -253,16 +282,17 @@ def verify(args):
         legend=list(csv.reader(f))[1:]
     require(len(legend)==len(counts) and {r[1]:(r[0],r[2],int(r[3])) for r in legend}=={c:('MARD',palette[c],n) for c,n in counts.items()},'legend mismatch')
     p.verify_png(out/'pixel_preview.png',p.preview_image(rows,palette))
-    p.verify_png(out/'pattern_with_codes.png',p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid']))))
-    p.verify_png(out/'candidate_sheet.png',p.render_customer(rows,palette,info['name'],29,counts,empty,approved=False))
+    p.verify_png(out/'pattern_with_codes.png',p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid'])),readable=readable))
+    p.verify_png(out/'candidate_sheet.png',p.render_customer(rows,palette,info['name'],29,counts,empty,approved=False,readable=readable))
     p.verify_pdf([out/'candidate_sheet.png'],out/'candidate_sheet_A2.pdf','A2')
+    if readable: printing.verify_boards(out,rows,palette)
     print('VERIFIED: candidate matrix, palette, pixels, counts, re-rendered PNG/PDF and generated file hashes. Visual review is a declared human/agent check, not algorithmic aesthetic certification.')
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='cmd',required=True)
-    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.set_defaults(func=prepare)
-    a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
+    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.add_argument('--finish-colors',type=int,help='Optional lower color budget for regional finish only');a.add_argument('--regions',help='Reviewed normalized polygon JSON: skin, hair, cloth, background, protect');a.set_defaults(func=prepare)
+    a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=ALL_VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
     a=sub.add_parser('verify');a.add_argument('--prepared',required=True);a.add_argument('--sheet',required=True);a.set_defaults(func=verify)
     args=parser.parse_args()
     try: args.func(args)
