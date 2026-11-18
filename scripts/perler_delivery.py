@@ -20,7 +20,7 @@ import sys
 import zipfile
 from collections import deque
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageChops
 
 ROOT = Path(__file__).resolve().parent.parent
 # Keep sibling processors importable even when this script is loaded by an external agent.
@@ -115,17 +115,19 @@ def write_matrix(path: Path, rows: list[list[str]]):
 
 
 def stats(rows, palette):
+    validate_rectangular(rows)
     counts = collections.Counter(cell for row in rows for cell in row if cell != EMPTY)
     unknown = sorted(set(counts) - set(palette))
     if unknown:
         raise PatternError("矩阵包含色卡未定义色号: " + ", ".join(unknown[:20]))
     h, w = len(rows), len(rows[0])
     empty_count = sum(x == EMPTY for row in rows for x in row)
-    assert sum(counts.values()) + empty_count == w*h
+    if sum(counts.values()) + empty_count != w*h: raise PatternError("豆数与网格数量不一致")
     return counts, empty_count, w, h
 
 
 def boards(rows, size):
+    if not isinstance(size,int) or not 1<=size<=29: raise PatternError("board 必须在 1..29")
     h, w = len(rows), len(rows[0])
     result = []
     for by, y in enumerate(range(0, h, size)):
@@ -175,24 +177,59 @@ def semantic_image(rows, palette):
     return im
 
 
-def save_preview(rows, palette, path, size=1044):
+def preview_image(rows, palette, size=1044):
     semantic = semantic_image(rows,palette)
     w,h = semantic.size
     scale = max(1, min(size//w, size//h))
     im = semantic.resize((w*scale,h*scale), Image.Resampling.NEAREST)
     bg = Image.new('RGBA', im.size, (255,255,255,255))
     bg.alpha_composite(im)
-    bg.convert('RGB').save(path)
+    return bg.convert('RGB')
+
+
+def save_preview(rows, palette, path, size=1044):
+    preview_image(rows, palette, size).save(path)
+
+
+def fitted_font(labels, max_width, max_height, desired, bold=True):
+    # Fit actual glyph bounding boxes, including three/four-character codes.
+    labels=set(map(str,labels))
+    for sz in range(max(1,int(desired)),0,-1):
+        f=font(sz,bold)
+        if all((b:=f.getbbox(label))[2]-b[0]<=max_width and b[3]-b[1]<=max_height for label in labels):
+            return f
+    raise PatternError('格内字体无法容纳；请增大图纸')
+
+
+def axis_labels(draw,x,y,w,h,cell,*,gap=25,fill='#63535a'):
+    # All coordinates, no sparsely sampled tick labels, all four edges.
+    f=fitted_font(range(1,max(w,h)+1),cell-4,cell-4,min(26,int(cell*.48)))
+    for c in range(w):
+        xp=x+(c+.5)*cell
+        for yp in (y-gap,y+h*cell+gap):
+            draw.text((xp,yp),str(c+1),font=f,fill=fill,anchor='mm')
+    for r in range(h):
+        yp=y+(r+.5)*cell
+        for xp in (x-gap,x+w*cell+gap):
+            draw.text((xp,yp),str(r+1),font=f,fill=fill,anchor='mm')
+
+
+def verify_png(path, expected):
+    # A matching manifest checksum alone does not establish correct rendering.
+    with Image.open(path) as image:
+        if image.mode!=expected.mode or image.size!=expected.size or any(b.getbbox() for b in ImageChops.difference(image,expected).split()):
+            raise PatternError(f'实际图纸与矩阵重新渲染结果不一致: {path.name}')
 
 
 def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29):
     h,w = len(rows),len(rows[0])
-    canvas = Image.new("RGB", (w*cell+1,h*cell+1), "#ffffff")
+    margin= max(36,cell)
+    canvas = Image.new("RGB", (w*cell+2*margin+1,h*cell+2*margin+1), "#ffffff")
     draw = ImageDraw.Draw(canvas)
-    f = font(max(10,int(cell * (0.37 if not bw else 0.40))),True)
+    f = fitted_font(("×" if c==EMPTY else c for row in rows for c in row),cell-6,cell-6,max(10,int(cell*.45)))
     for r,row in enumerate(rows):
         for c,code in enumerate(row):
-            x0,y0=c*cell,r*cell
+            x0,y0=margin+c*cell,margin+r*cell
             bg = '#FFFFFF' if bw else fill_for(code,palette)
             draw.rectangle((x0,y0,x0+cell-1,y0+cell-1),fill=bg)
             if labeled:
@@ -203,14 +240,18 @@ def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29
                 draw.text((x0+cell/2,y0+cell/2),label,font=f,fill=fg,anchor='mm')
     for c in range(w+1):
         major= board_line>0 and c%board_line==0
-        draw.line((c*cell,0,c*cell,h*cell), fill="#554450" if major else "#aaa3a8",width=3 if major else 1)
+        draw.line((margin+c*cell,margin,margin+c*cell,margin+h*cell), fill="#554450" if major else "#aaa3a8",width=3 if major else 1)
     for r in range(h+1):
         major= board_line>0 and r%board_line==0
-        draw.line((0,r*cell,w*cell,r*cell), fill="#554450" if major else "#aaa3a8",width=3 if major else 1)
+        draw.line((margin,margin+r*cell,margin+w*cell,margin+r*cell), fill="#554450" if major else "#aaa3a8",width=3 if major else 1)
+    axis_labels(draw,margin,margin,w,h,cell,gap=margin/2)
     return canvas
 
 
-def render_customer(rows, palette, title, board_size, counts, empty, out, *, approved=True):
+def render_customer(rows, palette, title, board_size, counts, empty, out=None, *, approved=True):
+    actual,actual_empty,_,_=stats(rows,palette)
+    if actual!=counts or actual_empty!=empty or not 1<=board_size<=29:
+        raise PatternError("图例统计或拼板规格无效")
     h,w=len(rows),len(rows[0]); n=len(counts)
     W=4960
     maxsize=max(w,h)
@@ -231,21 +272,22 @@ def render_customer(rows, palette, title, board_size, counts, empty, out, *, app
     def rr(xy,rad=20,fill='#fff',line='#e8dfe4',lw=3):
         d.rounded_rectangle(xy,radius=rad,fill=fill,outline=line,width=lw)
     rr((228,114,865,753),23)
-    thumb = semantic_image(rows,palette).resize((580,580),Image.Resampling.NEAREST)
-    im2=Image.new('RGBA',thumb.size,'#FFFFFF')
-    im2.alpha_composite(thumb)
-    img.paste(im2.convert('RGB'),(255,140))
+    thumb=preview_image(rows,palette,580)
+    im2=Image.new('RGB',(580,580),'#FFFFFF')
+    im2.paste(thumb,((580-thumb.width)//2,(580-thumb.height)//2))
+    img.paste(im2,(255,140))
     title=(title or '拼豆图纸').replace('\n',' ').strip()[:30]
-    t((958,150),'拼豆定制图纸  |  '+title,95,bold=True)
+    heading='拼豆定制图纸  |  '+title
+    d.text((958,150),heading,font=fitted_font([heading],W-958-228,130,95),fill='#30282e')
     t((958,304),'已确认主版本 · 色号与网格数据严格一致' if approved else '待确认图纸 · 色号与网格数据严格一致',48,'#755c67')
     carddata = [f'{w} × {h} 标准网格', f'{n} 种参考色号', f'{sum(counts.values()):,} 颗豆子', f'{math.ceil(w/board_size)*math.ceil(h/board_size)} 块 {board_size}×{board_size} 板']
     xs=[958,1700,2430,3170]; ws=[700,690,690,1540]
     for xpos,width,label in zip(xs,ws,carddata):
         rr((xpos,430,xpos+width,535),22,'#f8eef1','#f8eef1')
-        t((xpos+24,450),label,46,'#994967',True)
+        d.text((xpos+24,450),label,font=fitted_font([label],width-48,70,46),fill='#994967')
     t((960,612),'以下颜色和格内编号全部来自已锁定矩阵，非 AI 重新生成。' if approved else '候选矩阵直接绘制 · 请先确认造型与颜色，再冻结为正式版本。',42,'#776b71')
     # Underlying grid cells, with visible label text and line overlay.
-    gf=font(max(11,int(cell*.43)),True)
+    gf=fitted_font(("×" if c==EMPTY else c for row in rows for c in row),cell-8,cell-8,max(11,int(cell*.46)))
     for r,row in enumerate(rows):
         for c,code in enumerate(row):
             x0=x+c*cell; y0=y+r*cell
@@ -261,16 +303,7 @@ def render_customer(rows, palette, title, board_size, counts, empty, out, *, app
         yp=y+r*cell
         major=r%board_size==0; medium=r%10==0
         d.line((x,yp,x+grid_w,yp),fill='#51414a' if major else ('#84747c' if medium else '#afa6ad'),width=5 if major else (3 if medium else 1))
-    for c in range(w):
-        if c==0 or c==w-1 or (c+1)%5==0 or (c+1)%board_size==0 or c%board_size==0:
-            xp=x+(c+.5)*cell
-            t((xp,y-30),c+1,25,'#63535a',True,anchor='mm')
-            t((xp,y+grid_h+29),c+1,25,'#63535a',True,anchor='mm')
-    for r in range(h):
-        if r==0 or r==h-1 or (r+1)%5==0 or (r+1)%board_size==0 or r%board_size==0:
-            yp=y+(r+.5)*cell
-            t((x-31,yp),r+1,25,'#63535a',True,anchor='mm')
-            t((x+grid_w+35,yp),r+1,25,'#63535a',True,anchor='mm')
+    axis_labels(d,x,y,w,h,cell,gap=30)
     d.line((228,5525,W-228,5525),fill='#e4c4d1',width=7)
     t((228,5600),'配色用量  /  MARD 参考 HEX',63,bold=True)
     t((W-230,5609),f'{n} 种颜色 · 合计 {sum(counts.values()):,} 颗 · 空位 {empty}',44,'#775f6b',anchor='ra')
@@ -288,7 +321,7 @@ def render_customer(rows, palette, title, board_size, counts, empty, out, *, app
     t((228,footer_y+45),'严格校验：一格一色号，配色与总数来自相同的已确认原始矩阵。' if approved else '候选图纸：一格一色号，配色与总数来自同一候选矩阵。',38,'#655963')
     t((228,footer_y+110),'说明：屏幕颜色为参考 HEX，实物批次可能有色差；空位标 ×，不需要放豆。',36,'#7c7077')
     t((W-228,H-70),f'{w}×{h} · '+('单页顾客交付' if approved else '单页待确认图纸'),31,'#9b8791',anchor='ra')
-    img.save(out,optimize=True,dpi=(300,300))
+    if out is not None: img.save(out,optimize=True,dpi=(300,300))
     return img
 
 
@@ -300,7 +333,7 @@ def render_board(page, palette, board_r,board_c, yoffset,xoffset, *, bw=False, s
     d.text((120,195),f'全局行 {yoffset+1}–{yoffset+h} · 列 {xoffset+1}–{xoffset+w}    ({w}×{h})',font=font(40),fill='#72616a')
     csize=min(68,int(2020/max(size, w, h)))
     ox=(W-w*csize)//2; oy=360
-    f=font(max(18,int(csize*.38)),True)
+    f=fitted_font(("×" if c==EMPTY else c for row in rows for c in row),csize-8,csize-8,max(18,int(csize*.42)))
     for r,row in enumerate(rows):
         for c,cd in enumerate(row):
             x=ox+c*csize; y=oy+r*csize
@@ -338,7 +371,7 @@ def pdf_from_images(paths: list[Path], out: Path, format='A4'):
     except ImportError as exc:
         raise PatternError('缺少 reportlab；请先执行 pip install -r requirements.txt') from exc
     page=A2 if format=='A2' else A4
-    pdf=canvas.Canvas(str(out),pagesize=page,pageCompression=1)
+    pdf=canvas.Canvas(str(out) if isinstance(out,(str,Path)) else out,pagesize=page,pageCompression=1,invariant=1)
     for p in paths:
         with Image.open(p) as im:
             iw,ih=im.size
@@ -351,7 +384,16 @@ def pdf_from_images(paths: list[Path], out: Path, format='A4'):
     pdf.save()
 
 
+def verify_pdf(paths, actual, fmt):
+    # Same renderer / environment, deterministic PDF (invariant=1).
+    buf=io.BytesIO()
+    pdf_from_images(paths,buf,fmt)
+    if hashlib.sha256(buf.getvalue()).hexdigest()!=sha_file(actual):
+        raise PatternError(f'PDF 与已校验施工图不一致: {actual.name}')
+
+
 def freeze(args):
+    if not 1<=args.board<=29: raise PatternError('board 必须在 1..29')
     palette=load_palette(PALETTE)
     rows=read_matrix(Path(args.matrix))
     counts,empty,w,h=stats(rows,palette)
@@ -416,8 +458,11 @@ def deliver(args):
     root=Path(args.out)
     if root.exists():
         raise PatternError('交付目录已存在，禁止覆盖；请选一个新的输出目录')
-    root.mkdir(parents=True)
     n=meta['board_size']
+    if not 1<=n<=29: raise PatternError('MASTER board 必须在 1..29')
+    root.mkdir(parents=True)
+    shutil.copyfile(master/meta['matrix_file'],root/'master_matrix.csv')
+    shutil.copyfile(master/meta['palette_file'],root/'palette.json')
     semantic_image(rows,palette).save(root/'semantic_pixels.png')
     save_preview(rows,palette,root/'pixel_preview.png')
     render_grid(rows,palette,cell=min(50,max(24,3800//max(meta['width'],meta['height']))),board_line=n).save(root/'pattern_with_codes.png')
@@ -435,14 +480,14 @@ def deliver(args):
     pdf_from_images(images_bw,root/'boards_bw_A4.pdf')
     allpaths=sorted(p for p in root.rglob('*') if p.is_file())
     validation={
-        'format':'perler-pattern-delivery-validation-v2',
+        'format':'perler-pattern-delivery-validation-v3',
         'master_matrix_sha256':meta['matrix_sha256'],
         'master_palette_sha256':meta['palette_sha256'],
         'codes_sha256':meta['codes_sha256'],
         'width':meta['width'],'height':meta['height'],'colors':len(counts),
         'beads':sum(counts.values()),'empty':empty,'board_size':n,
         'board_count':len(images_color),
-        'semantic_verified':True,'files_sha256':{str(p.relative_to(root)):sha_file(p) for p in allpaths},
+        'semantic_verified':True,'files_sha256':{p.relative_to(root).as_posix():sha_file(p) for p in allpaths},
     }
     (root/'validation.json').write_text(json.dumps(validation,indent=2,ensure_ascii=False),encoding='utf8')
     zip_path=root/'customer_delivery.zip'
@@ -460,11 +505,18 @@ def verify_master_delivery(master,root):
     verpath=root/'validation.json'
     if not verpath.is_file(): raise PatternError('交付目录缺少 validation.json')
     v=json.loads(verpath.read_text(encoding='utf8'))
+    if v.get('format')!='perler-pattern-delivery-validation-v3':
+        raise PatternError('旧交付包不含渲染校验；请用原 MASTER 重新 deliver 到新目录')
     for key,ref in [('master_matrix_sha256','matrix_sha256'),('master_palette_sha256','palette_sha256'),('codes_sha256','codes_sha256')]:
         if v.get(key)!=meta[ref]: raise PatternError('交付与冻结 MASTER 指纹不一致：'+key)
     expect={'width':meta['width'],'height':meta['height'],'beads':sum(counts.values()),'colors':len(counts),'empty':empty,'board_size':meta['board_size'],'board_count':len(boards(rows,meta['board_size']))}
     for key,val in expect.items():
         if v.get(key)!=val: raise PatternError('交付统计不一致：'+key)
+    n=meta['board_size']
+    pieces=boards(rows,n)
+    required={'master_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','pattern_with_codes.png','customer_sheet.png','customer_sheet_A2.pdf','legend.csv','boards_color_A4.pdf','boards_bw_A4.pdf'}
+    required.update(f'boards/board_{i:02d}_{kind}.png' for i in range(1,len(pieces)+1) for kind in ('color','bw'))
+    if set(v['files_sha256'])!=required: raise PatternError('交付文件清单不完整或有额外文件')
     for rel,claimed_hash in v['files_sha256'].items():
         path=root/rel
         if not path.resolve().is_relative_to(root.resolve()) or not path.is_file() or sha_file(path)!=claimed_hash:
@@ -477,16 +529,30 @@ def verify_master_delivery(master,root):
         allrows=list(csv.DictReader(f))
     for row in allrows:
         cd=row.get('MARD色号');color=row.get('参考HEX');qty=int(row.get('颗数','-1'))
-        if cd in actual or cd not in palette or color!=palette[cd]: raise PatternError('清单色号/色块错误')
+        if row.get('品牌')!='MARD' or cd in actual or cd not in palette or color!=palette[cd]: raise PatternError('清单色号/色块错误')
         actual[cd]=qty
     if actual!=dict(counts): raise PatternError('清单用量与矩阵不一致')
+    if sha_file(root/'master_matrix.csv')!=meta['matrix_sha256'] or sha_file(root/'palette.json')!=meta['palette_sha256']:
+        raise PatternError('交付包矩阵/色卡与 MASTER 不符')
+    verify_png(root/'pixel_preview.png',preview_image(rows,palette))
+    verify_png(root/'pattern_with_codes.png',render_grid(rows,palette,cell=min(50,max(24,3800//max(meta['width'],meta['height']))),board_line=n))
+    verify_png(root/'customer_sheet.png',render_customer(rows,palette,meta['name'],n,counts,empty))
+    color_pages=[]; bw_pages=[]
+    for i,(r,c,y,x,part) in enumerate(pieces,1):
+        for kind,bw,pages in [('color',False,color_pages),('bw',True,bw_pages)]:
+            path=root/'boards'/f'board_{i:02d}_{kind}.png'
+            verify_png(path,render_board(part,palette,r,c,y,x,bw=bw,size=n)); pages.append(path)
+    verify_pdf([root/'customer_sheet.png'],root/'customer_sheet_A2.pdf','A2')
+    verify_pdf(color_pages,root/'boards_color_A4.pdf','A4')
+    verify_pdf(bw_pages,root/'boards_bw_A4.pdf','A4')
+    if not (root/'customer_delivery.zip').is_file(): raise PatternError('交付 ZIP 缺失')
     if (root/'customer_delivery.zip').is_file():
         with zipfile.ZipFile(root/'customer_delivery.zip') as z:
-            if set(z.namelist())!=(set(v['files_sha256'])|{'validation.json'}): raise PatternError('ZIP 文件清单不一致')
+            if len(z.namelist())!=len(set(z.namelist())) or set(z.namelist())!=(set(v['files_sha256'])|{'validation.json'}): raise PatternError('ZIP 文件清单不一致')
             if z.read('validation.json') != verpath.read_bytes(): raise PatternError('ZIP 内验证记录不一致')
             for rel,exp in v['files_sha256'].items():
                 if hashlib.sha256(z.read(rel)).hexdigest()!=exp: raise PatternError('ZIP 内部校验失败 '+rel)
-    print('VERIFIED: master lock, 1-cell-1-code, legend counts, derived files, ZIP contents all match')
+    print('VERIFIED: master lock, 1-cell-1-code, legend counts, re-rendered PNG/PDF, ZIP contents all match')
 
 
 def verify(args): verify_master_delivery(Path(args.master),Path(args.delivery))
@@ -650,7 +716,7 @@ def generate(args):
 
 
 def parser():
-    ap=argparse.ArgumentParser(description='Perler/MARD cartoon + pixel-locked pattern generation & customer delivery v2.3')
+    ap=argparse.ArgumentParser(description='Perler/MARD cartoon + pixel-locked pattern generation & customer delivery v2.4')
     sub=ap.add_subparsers(dest='command',required=True)
     p=sub.add_parser('freeze',help='Save approved matrix as immutable master')
     p.add_argument('--matrix',required=True);p.add_argument('--out',required=True)

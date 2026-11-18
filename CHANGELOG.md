@@ -1,3 +1,11 @@
+## v2.4.0 — Deterministic chart-render integrity
+
+- Explicit no-image-model final-chart contract for every output mode.
+- Continuous 1..width / 1..height on all four axes, fitted cell labels, accurate legends.
+- Actual PNG rerender comparison and deterministic PDF verification even if output hashes are rewritten.
+- Realistic first-sheet mode, candidate A2 PDF, and complete approved delivery ZIP with canonical matrix and pinned palette. Reject mismatched reference palette, missing/extra manifest items, duplicate ZIP entries.
+- Preserve approved v2 MASTER files and examples; regenerate historical deliveries into a fresh directory for v3 validation. Same renderer/font/dependencies required for rerender verification.
+
 ## v2.3.0 — First-sheet quality gate
 
 - Default portrait intent resolves to a real cartoon-based numbered sheet.

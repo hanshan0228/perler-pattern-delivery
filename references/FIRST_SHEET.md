@@ -1,8 +1,8 @@
-# 首稿质量规范 / First-sheet quality contract (v2.3)
+# 首稿质量规范 / First-sheet quality contract (v2.4)
 
 ## 目标与输入分流
 
-- 默认交付：卡通人物 **带色号单页拼豆图纸**，不是画一张看起来像网格的图。若用户明确指定像素图或普通照片模式，按指定走；只请求底图/模拟效果时才单独交付底图/模拟图。
+- 默认交付：卡通人物 **带色号单页拼豆图纸**，不是画一张看起来像网格的图。若用户明确指定写实，运行 `prepare --mode photo` 且不提供 `--cartoon-image`；如果同时请求两版，分开审核及交付；若指定像素图，按指定走；只请求底图/模拟效果时才单独交付底图/模拟图。
 - 新肖像默认 87×87、最多 33 个 MARD 颜色（不是必须恰好 33 个）。58×58 可作为小尺寸备选，不擅自缩小用户指定尺寸。
 - 已确认 MASTER 永远优先；新造型才重新生成。任何卡通源或客户原始照片只留在客户项目目录，不上传到公共 GitHub。
 
@@ -33,3 +33,10 @@ Use concrete notes stating what was inspected and why the selected variant wins.
 ## Final user response
 
 Lead with the selected candidate sheet; include a link to the high-resolution sheet and optionally matrix and zoomable chart. Briefly state grid, number of colors, beads, boards, validation and unapproved status. Do not present competing weak drafts to the customer unless requested. Do not present the original reference comparison as the main deliverable.
+
+## 最终图纸反幻觉门禁（v2.4）
+
+- `select` 新增 A2 单页 PDF；PNG、PDF 与 CSV 必须来自同一矩阵。`verify` 重新渲染实际带坐标、每格色号和图例的 PNG；以确定性 PDF 重新生成并比较，拒绝仅更新哈希的假图纸。固定 MARD 色卡与仓库参考表匹配。
+- `--mode photo` 使用 `realistic_not_cartoon` 替代 `cartoon_not_photo_filter`，其余视觉检查相同；模式记录在候选清单中。
+- 禁止用生成式模型直接画施工图，即使用户说“直接给我图纸”。只可用它生成艺术底图。没有本地执行能力就明确说明限制。
+- 重渲染验证针对同一可信代码与运行环境，不是对任意第三方截图的 OCR 认证，也不是不可伪造的数字签名或自动审美评价。

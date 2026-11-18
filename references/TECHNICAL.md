@@ -37,3 +37,11 @@ approved master -> remove-background -> new candidate -> review -> freeze v2
 ## Fail closed
 
 - On a mismatch, stop with an error message. Never silently regenerate a different figure, substitute a source image or pick a different color palette.
+
+## v2.4 deterministic rendering verification
+
+- All four chart axes contain every integer from 1 to the actual row/column count. Codes use fitted glyph bounds; each occupied cell uses its exact pinned MARD code and fill. Empty cells use × and do not count as beads.
+- Candidate validation v2 and delivery validation v3 compare actual PNG pixels to an independent re-execution of the deterministic renderer; PDFs are recreated with ReportLab invariant mode and compared byte-for-byte. Candidate palette is checked against the repository reference. Approved delivery uses its frozen palette and matrix.
+- Approved ZIP now contains the canonical matrix and palette, with a complete expected inventory. ZIP duplicate paths and missing ZIP are rejected.
+- Verification requires the same renderer/font/dependency environment. Use the trusted original MASTER and regenerate if environment or format differs. Older delivery manifests remain usable as historical records but do not meet this new render-validation contract.
+- These checks detect output mismatch even with a rewritten output hash manifest. They cannot secure an attacker-controlled renderer, altered trusted MASTER or fabricated visual review. Store approved master fingerprints independently when needed.

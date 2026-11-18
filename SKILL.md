@@ -4,16 +4,26 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
+
+## P0 最高优先级：最终施工图只能由程序绘制
+
+**绝对禁止让生成式图像模型绘制最终图纸、格子、数字坐标、色号、图例、豆数或 PDF。** 图像模型只可生成无网格无文字的艺术底图。用户要求一张图纸也必须执行 Python 生产线，而非调用生图工具直接返回成品。以下要求同时适用于卡通版、写实版、双版本及已确认图纸。
+
+- 只有 `first_sheet.py select` + `verify` 成功生成的待确认单页，或 `perler_delivery.py deliver` + `verify` 成功生成的已确认单页，才可作为最终施工图发给用户。`generate`、`import-pixel`、任何纯图片模型输出均不能替代该验收。缺少 Python/文件工具则说明无法制造可验证图纸，不要伪造。
+- 单页 PNG/PDF、真实矩阵 CSV、固定 MARD 色卡、图例及校验记录必须实际存在；核对本次命令退出状态，不得仅凭文字声称通过。交付前检查图纸原尺寸和局部，特别检查第 48–51 行、第 55–58 列（若存在）、长色号与深浅底色文字。
+- `verify` 必须从矩阵重新渲染并比较真实 PNG 像素及同环境确定性 PDF，不仅验证 PNG 文件的哈希。所有坐标从 1 连续编号到实际宽高，每个格子只能引用真实色卡。禁止用 OCR 或手工补几个乱码来挽救模型生成的假图纸。
+- 提交新肖像时只使用 `UNAPPROVED`，取得用户明确认可后才 `freeze`。用户一次要卡通和写实，应分别完成两套独立候选与校验，不能共享或虚构矩阵。交付链接必须指向本次已验收文件。
+- 旧版交付包没有重渲染校验，需从原有 MASTER 重新 `deliver` 到新目录；禁止更改 MASTER 或仅修改旧校验文件来通过。重渲染验收需使用相同代码、字体、Pillow 与 ReportLab 版本。环境不同则用可信 MASTER 在新环境重新导出。
 
 ## P0 默认入口：卡通风格拼豆图纸，不是卡通插画
 
 **调用者不需要另写长提示词。** 听到“卡通版”“卡通拼豆图纸”“做成拼豆图纸”“再给我一个成品”且上下文是制作拼豆图纸，默认最终产物为顾客单页**有色号的施工图**。新肖像默认精致平涂卡通；用户明确要求写实才用 photo 模式。只有明确要求“卡通底图”“只要效果预览/实物模拟”才仅交付相应图。用户要改已确认图纸排版则优先使用 MASTER，不重新卡通化。
 
-### 新肖像的必经生产线（v2.3，首次使用先读这里）
+### 新肖像的必经生产线（v2.4，首次使用先读这里）
 
 1. 使用实际上传的原照片作为图像模型编辑参考。按 [首稿规范](references/FIRST_SHEET.md) 生成**无网格、无色号、无标题**的精致平涂卡通底图。必须用真正的图像生成/编辑模型或用户提供的卡通原稿；离线滤镜只能是用户明确选择的实验模式。没有图像工具和真实底图就说明缺口，不能偷偷改用滤镜，也不能伪造图纸。
 2. 运行首稿生产线（默认 87×87、最多 33 色；用户指定值优先）：
@@ -30,9 +40,9 @@ python scripts/first_sheet.py select --prepared ./review_v1 --variant flat --rev
 python scripts/first_sheet.py verify --prepared ./review_v1 --sheet ./first_sheet
 ```
 
-5. **首次用户可见回复**以 `candidate_sheet.png` 为主（包含效果预览、真实网格、每格色号、坐标、MARD 配色与数量）；附高清图/可放大总图和 CSV。不以纯插画、过程图或实物模拟代替图纸，不要求用户反复提醒。说明它是待确认图纸，未获确认不得称正式已批准版本。只有用户确认后才运行 `freeze` / `deliver` / `verify`，不得覆盖旧 MASTER。
+5. **首次用户可见回复**以 `candidate_sheet.png` 为主（包含效果预览、真实网格、每格色号、坐标、MARD 配色与数量）；附 A2 PDF、高清图/可放大总图和 CSV。不以纯插画、过程图或实物模拟代替图纸，不要求用户反复提醒。说明它是待确认图纸，未获确认不得称正式已批准版本。只有用户确认后才运行 `freeze` / `deliver` / `verify`，不得覆盖旧 MASTER。
 
-程序 `select` 会拒绝缺失或失败的视觉检查、过时的候选哈希；它检查的是审核记录而不是自动识别美学质量。`verify` 校验机器可验证的矩阵、色卡、像素、统计与生成文件哈希。任何检查失败则不交付。
+程序 `select` 会拒绝缺失或失败的视觉检查、过时的候选哈希；它检查的是审核记录而不是自动识别美学质量。`verify` 校验矩阵、固定参考色卡、语义像素、数量、实际 PNG/PDF 重渲染结果与文件哈希。任何检查失败则不交付。
 
 ## 第一原则：先固定数据，再制作所有视觉交付物
 
@@ -76,15 +86,16 @@ python scripts/perler_delivery.py verify \
 
 `freeze` 拒绝写入已经存在的 MASTER。`deliver` 只写到新目录并拒绝覆盖已有交付件。要升级版本就使用新的项目目录（v2、v3）。
 
-### 模式 B：明确要求写实的普通照片候选（非默认肖像模式）
+### 模式 B：明确要求写实（同一强制验收流程）
 
 ```bash
-python scripts/perler_delivery.py generate \
-  --image /path/to/photo.png --grid 87 --colors 35 \
-  --out /path/to/candidate
+python scripts/first_sheet.py prepare --mode photo --image original.jpg --grid 87 --colors 40 --out ./realistic_review
+# 实际观察 review_comparison.png，填写 visual_review_TEMPLATE.json 的真实检查结果、选中候选及其哈希，保存为 realistic_review.json
+python scripts/first_sheet.py select --prepared ./realistic_review --variant flat --review ./realistic_review.json --name '写实定制肖像' --out ./realistic_sheet
+python scripts/first_sheet.py verify --prepared ./realistic_review --sheet ./realistic_sheet
 ```
 
-处理过程：居中裁剪 → BOX 降采样 → Lab 颜色聚类 → 最接近的 MARD 参考色号。输出候选 CSV 和像素预览。**必须审查五官、花瓣、颗粒噪声，再由顾客确认后单独 freeze**。需要更精细的卡通化时使用外部图像工具，但只能用于生成候选，不得替代已确认 MASTER。
+写实模式直接采样原照片（不接受卡通底图参数），两种采样方案和全套首稿验收与卡通版一致。`candidate_sheet.png` 和 `candidate_sheet_A2.pdf` 是待确认施工图。视觉审核须确认真实风格、原姿态、五官及重要细节。写实版不强制卡通化。
 
 ### 模式 C：底层卡通实验工具（非默认首稿入口）
 

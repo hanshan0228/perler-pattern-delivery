@@ -1,6 +1,10 @@
-# Perler Pattern Delivery Skill v2.3.0
+# Perler Pattern Delivery Skill v2.4.0
 
-## Default first-sheet workflow (v2.3)
+## v2.4: Render integrity gate
+
+Never ask an image model to draw the final chart. The same deterministic Python renderer produces the numbered grid, color legend and counts for cartoon and realistic portraits. `first_sheet.py prepare --mode photo --image portrait.jpg --grid 87 --colors 40 --out review` uses the original photo; cartoon mode requires an actual artwork file. Review, select and verify before sharing the resulting PNG/PDF. For both candidate and approved sheets, verify checks actual rendered PNG/PDF content, not only hashes. Approved masters are unchanged; use a new output directory for the new validation format. Exact rerender checks require the same font and dependencies.
+
+## Default first-sheet workflow (v2.4)
 
 For new portrait requests, create a real cartoon illustration using an authorized image editor, then run `scripts/first_sheet.py prepare`, review both candidates, `select`, and `verify`. The deliverable is a numbered, palette-accurate **unapproved** single-sheet chart rather than an illustration or bead mockup. See [first-sheet contract](references/FIRST_SHEET.md) and [SKILL.md](SKILL.md). Offline filters are explicitly experimental.
 

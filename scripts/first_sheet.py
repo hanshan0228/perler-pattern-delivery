@@ -16,7 +16,14 @@ from PIL import Image, ImageDraw, ImageOps
 import perler_delivery as p
 from cartoon_pipeline import open_rgb
 
-SCHEMA = 'first-cartoon-sheet-v1'
+SCHEMA = 'first-sheet-v2'
+PHOTO_CHECKS = ('recognizable_subject', 'realistic_not_cartoon', 'framing_and_silhouette',
+                'key_features_readable', 'clean_regions_and_no_artifacts')
+
+def checks_for(mode):
+    if mode=='photo': return PHOTO_CHECKS
+    if mode=='cartoon': return CHECKS
+    raise p.PatternError('invalid portrait mode')
 VARIANTS = ('detail', 'flat')
 CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
           'key_features_readable', 'clean_regions_and_no_artifacts')
@@ -61,10 +68,13 @@ def map_candidate(stage, n, colors, palette, variant):
     return p.quantize_pixels(data,n,colors,palette)
 
 
-def make_comparison(root, original, stage, variants, palette):
+def make_comparison(root, original, stage, variants, palette, mode="cartoon"):
     labels=['Original reference','AI cartoon base','Detail - central median','Flat - area mean','Approved style benchmark (87)']
     benchmark=p.semantic_image(p.read_matrix(p.ROOT/'examples'/'approved_87x87.csv'),palette)
     images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS],benchmark]
+    if mode=='photo':
+        labels[1]='Photo source - no cartoon filter'
+        labels=labels[:4]; images=images[:4]
     canvas=Image.new('RGB',(1380,1090),'#f7f3ef');d=ImageDraw.Draw(canvas)
     d.text((25,15),'FIRST SHEET / VISUAL REVIEW - benchmark is style only',font=p.font(26,True),fill='#30282e')
     for i,(im,label) in enumerate(zip(images,labels)):
@@ -77,16 +87,25 @@ def make_comparison(root, original, stage, variants, palette):
 
 
 def prepare(args):
-    original,art,root=Path(args.image),Path(args.cartoon_image),Path(args.out)
-    require(original.is_file() and art.is_file(),'需要原始照片及实际生成的卡通底图文件；不允许用离线滤镜冒充 AI 底图')
-    require(p.sha_file(original)!=p.sha_file(art),'卡通底图与原图相同，不能作为卡通化结果')
+    original,root=Path(args.image),Path(args.out)
+    mode=getattr(args,'mode','cartoon'); checks=checks_for(mode)
+    require(original.is_file(),'需要实际原始照片文件')
+    art_arg=getattr(args,'cartoon_image',None)
+    if mode=='cartoon':
+        require(art_arg and Path(art_arg).is_file(),'需要实际生成的卡通底图文件；不允许用离线滤镜冒充 AI 底图')
+        art=Path(art_arg)
+        require(p.sha_file(original)!=p.sha_file(art),'卡通底图与原图相同，不能作为卡通化结果')
+    else:
+        require(not art_arg,'写实模式禁止传入卡通底图')
+        art=original
+    stage_file='cartoon_stage.png' if mode=='cartoon' else 'photo_stage.png'
     require(1<=args.grid<=145 and 1<=args.colors<=120,'grid 1..145, colors 1..120')
     require(not root.exists(),'候选目录已存在，请用新目录')
     photo=open_rgb(original,max_side=1200);stage=fit_square(open_rgb(art,max_side=1200))
     require(len(stage.getcolors(maxcolors=2) or [])!=1,'卡通底图是单色，请重新生成')
     palette=p.load_palette(p.PALETTE);root.mkdir(parents=True)
     shutil.copyfile(p.PALETTE,root/'palette.json')
-    stage.save(root/'cartoon_stage.png')
+    stage.save(root/stage_file)
     variants={}; metadata={}
     for v in VARIANTS:
         rows=map_candidate(stage,args.grid,args.colors,palette,v)
@@ -99,14 +118,14 @@ def prepare(args):
         variants[v]=rows
         metadata[v]={'codes_sha256':p.digest_codes(rows),'colors':len(counts),'beads':sum(counts.values()),
                      'files':{f.name:p.sha_file(f) for f in target.iterdir()}}
-    make_comparison(root,photo,stage,variants,palette)
+    make_comparison(root,photo,stage,variants,palette,mode)
     manifest={'schema':SCHEMA,'status':'UNAPPROVED','grid':args.grid,'max_colors':args.colors,
-              'original_sha256':p.sha_file(original),'external_cartoon_sha256':p.sha_file(art),
-              'stage_sha256':p.sha_file(root/'cartoon_stage.png'),'palette_sha256':p.sha_file(root/'palette.json'),
+              'mode':mode,'stage_file':stage_file,'original_sha256':p.sha_file(original),'source_art_sha256':p.sha_file(art),
+              'stage_sha256':p.sha_file(root/stage_file),'palette_sha256':p.sha_file(root/'palette.json'),
               'comparison_sha256':p.sha_file(root/'review_comparison.png'),'variants':metadata}
     dump(root/'prepare.json',manifest)
     dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
-         'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in CHECKS},'notes':''})
+         'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in checks},'notes':''})
     print('PREPARED: inspect review_comparison.png and chosen candidate at full resolution; then record actual visual review. No master created.')
 
 
@@ -114,9 +133,13 @@ def verified_variant(root, v):
     require(v in VARIANTS,'unknown variant')
     meta=load(root/'prepare.json')
     require(meta['schema']==SCHEMA and meta['status']=='UNAPPROVED','invalid prepare manifest')
-    for file,key in [('palette.json','palette_sha256'),('cartoon_stage.png','stage_sha256'),('review_comparison.png','comparison_sha256')]:
+    mode=meta['mode']; checks_for(mode)
+    require(meta['stage_file']==('cartoon_stage.png' if mode=='cartoon' else 'photo_stage.png'),'invalid stage file')
+    require(p.sha_file(root/'palette.json')==p.sha_file(p.PALETTE),'candidate palette differs from pinned MARD reference')
+    for file,key in [('palette.json','palette_sha256'),(meta['stage_file'],'stage_sha256'),('review_comparison.png','comparison_sha256')]:
         require(p.sha_file(root/file)==meta[key],f'{file} changed')
     target=root/v; info=meta['variants'][v]
+    require(set(info['files'])=={'candidate_matrix.csv','candidate_preview.png','semantic_pixels.png'},'missing variant file')
     for fn,sha in info['files'].items():
         require(Path(fn).name==fn and p.sha_file(target/fn)==sha,f'{v}/{fn} changed')
     rows=p.read_matrix(target/'candidate_matrix.csv');palette=p.load_palette(root/'palette.json')
@@ -126,12 +149,13 @@ def verified_variant(root, v):
     require(len(counts)==info['colors'] and sum(counts.values())==info['beads'],'statistics mismatch')
     with Image.open(target/'semantic_pixels.png') as pixels:
         require(pixels.mode=='RGBA' and pixels.size==(w,h) and pixels.tobytes()==p.semantic_image(rows,palette).tobytes(),'semantic pixels mismatch')
+    p.verify_png(target/'candidate_preview.png',p.preview_image(rows,palette))
     return meta,rows,palette,counts,empty
 
 
 def review_ok(review,meta,v):
     require(review.get('variant')==v and review.get('codes_sha256')==meta['variants'][v]['codes_sha256'] and review.get('comparison_sha256')==meta['comparison_sha256'],'review not bound to current candidate/comparison')
-    require(all(review.get('checks',{}).get(k) is True for k in CHECKS),'visual review incomplete or failed; correct the illustration or regenerate candidate before showing the chart')
+    require(all(review.get('checks',{}).get(k) is True for k in checks_for(meta['mode'])),'visual review incomplete or failed; correct the illustration or regenerate candidate before showing the chart')
     require(isinstance(review.get('notes'),str) and len(review['notes'].strip())>=12,'record concrete visible features and comparison; no boilerplate approvals')
 
 
@@ -148,9 +172,10 @@ def select(args):
     p.legend_csv(out/'legend.csv',counts,palette)
     p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid']))).save(out/'pattern_with_codes.png')
     p.render_customer(rows,palette,args.name,29,counts,empty,out/'candidate_sheet.png',approved=False)
+    p.pdf_from_images([out/'candidate_sheet.png'],out/'candidate_sheet_A2.pdf','A2')
     dump(out/'visual_review.json',review)
-    info={'schema':SCHEMA,'status':'UNAPPROVED','variant':args.variant,'grid':meta['grid'],
-          'codes_sha256':p.digest_codes(rows),'colors':len(counts),'beads':sum(counts.values()),'empty':empty,
+    info={'schema':SCHEMA,'status':'UNAPPROVED','mode':meta['mode'],'variant':args.variant,'grid':meta['grid'],
+          'codes_sha256':p.digest_codes(rows),'name':args.name,'colors':len(counts),'beads':sum(counts.values()),'empty':empty,
           'board_count':len(p.boards(rows,29)),'visual_review':'recorded, NOT customer approval',
           'files':{f.name:p.sha_file(f) for f in out.iterdir()}}
     dump(out/'candidate_validation.json',info)
@@ -163,8 +188,9 @@ def verify(args):
     info=load(out/'candidate_validation.json')
     require(info['schema']==SCHEMA and info['status']=='UNAPPROVED','invalid candidate status')
     v=info['variant'];meta,rows,palette,counts,empty=verified_variant(root,v)
+    require(info.get('mode')==meta['mode'],'mode mismatch')
     review_ok(load(out/'visual_review.json'),meta,v)
-    required={'candidate_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','legend.csv','pattern_with_codes.png','candidate_sheet.png','visual_review.json'}
+    required={'candidate_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','legend.csv','pattern_with_codes.png','candidate_sheet.png','candidate_sheet_A2.pdf','visual_review.json'}
     require(set(info['files'])==required,'incomplete first sheet file list')
     for fn,sha in info['files'].items(): require(p.sha_file(out/fn)==sha,f'{fn} changed')
     require(p.read_matrix(out/'candidate_matrix.csv')==rows and p.digest_codes(rows)==info['codes_sha256'],'selected matrix changed')
@@ -176,12 +202,16 @@ def verify(args):
     with (out/'legend.csv').open(encoding='utf-8-sig',newline='') as f:
         legend=list(csv.reader(f))[1:]
     require(len(legend)==len(counts) and {r[1]:(r[0],r[2],int(r[3])) for r in legend}=={c:('MARD',palette[c],n) for c,n in counts.items()},'legend mismatch')
-    print('VERIFIED: candidate matrix, palette, pixels, counts and generated file hashes. Visual review is a declared human/agent check, not algorithmic aesthetic certification.')
+    p.verify_png(out/'pixel_preview.png',p.preview_image(rows,palette))
+    p.verify_png(out/'pattern_with_codes.png',p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid']))))
+    p.verify_png(out/'candidate_sheet.png',p.render_customer(rows,palette,info['name'],29,counts,empty,approved=False))
+    p.verify_pdf([out/'candidate_sheet.png'],out/'candidate_sheet_A2.pdf','A2')
+    print('VERIFIED: candidate matrix, palette, pixels, counts, re-rendered PNG/PDF and generated file hashes. Visual review is a declared human/agent check, not algorithmic aesthetic certification.')
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='cmd',required=True)
-    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--cartoon-image',required=True);a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.set_defaults(func=prepare)
+    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.set_defaults(func=prepare)
     a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
     a=sub.add_parser('verify');a.add_argument('--prepared',required=True);a.add_argument('--sheet',required=True);a.set_defaults(func=verify)
     args=parser.parse_args()

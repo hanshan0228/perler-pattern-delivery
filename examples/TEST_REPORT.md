@@ -1,25 +1,18 @@
-# Validation report — v2.3.0
+# Validation report — v2.4.0
 
-Run locally with:
+Run: `python -m unittest discover -s tests -v`
 
-```bash
-python -m unittest discover -s tests -v
-```
+31 tests passed in the local build environment (24 previous tests and seven new regression tests).
 
-**24 tests passed** in this build environment. Checks include:
+- Continuous coordinates: all 232 labels across the four sides of a 58×58 chart, including 49–51 and 55–57.
+- Strict matrix input: missing column 56 and incorrectly numbered row 90 are rejected.
+- Actual cell-label drawing and sampled color fills match the supplied codes, including empty cells.
+- Wrong candidate chart PNG, numbered-grid PNG and PDF are rejected even after updating their manifest hashes.
+- Substituting a wrong color for A1 in the candidate reference palette is rejected even after updating the palette hash.
+- Approved delivery PNG replacement is rejected even after rehashing.
+- Realistic first-sheet mode runs without a cartoon artifact, creates an unapproved chart and A2 PDF, and verifies both.
+- Approved 58×58 and 87×87 matrix fingerprints and counts remain unchanged; all previous tests passed.
 
-- MARD 291 reference colors, approved 58×58 (20 colors) and 87×87 (33 colors) matrices, SHA-256 row-code digests unchanged.
-- Strict CSV/JSON reading, transparent EMPTY, 29×29 board partitioning.
-- Master freeze, mutation rejection, unchanged customer delivery verification.
-- Offline `soft`, `comic`, and `poster` generate new visual stages on a textured synthetic portrait.
-- Cartoon CLI produces a real one-code-per-cell 29×29 matrix and a reference stage PNG.
-- External stylized-image import requires an actual file and records its SHA-256.
-- Central cell sampling avoids a synthetic grid line; cleanup operates on copies and preserves input.
-- End-to-end candidate→master→deliver→verify succeeded.
+Integration: re-exported the approved 58×58 example as 20 MARD reference colors, 3,364 beads, four 29×29 boards. Full PNG/PDF re-render checks, inventory and ZIP verification passed. Rendered and inspected the A2 PDF.
 
-This suite validates data integrity, not universal portrait likeness or physical bead color calibration. Manual review of facial features, hair, flowers and thin structural details is mandatory before freezing any new design.
-
-## v2.3 additions
-
-- Seven new tests cover intact framing, required distinct inputs, review rejection, digest binding, valid two-variant matrices, verified unapproved chart and edited-file rejection.
-- Local visual integration check reused the previously approved portrait's cartoon source privately: selected area-average candidate, 87×87, 28 colors, 7,569 beads, 9 boards. New matrix is unapproved; existing 33-color and 20-color reference matrices remain unchanged. No new customer photo or source artwork is included.
+This is render/data validation under the same trusted renderer, font and dependency environment, not a guarantee of artistic likeness, physical bead color or immunity to an agent bypassing the workflow. The new real-photo sample underwent candidate comparison but was not approved because its facial color transitions were unsatisfactory. No new customer image is included.
