@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Quality-gated first cartoon bead sheet; never approves or mutates a MASTER.
+
+The image model creates ONLY a reference illustration. This local pipeline creates
+all grid data, previews, labels and counts from actual MARD color codes.
+"""
+from __future__ import annotations
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageOps
+import perler_delivery as p
+from cartoon_pipeline import open_rgb
+
+SCHEMA = 'first-cartoon-sheet-v1'
+VARIANTS = ('detail', 'flat')
+CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
+          'key_features_readable', 'clean_regions_and_no_artifacts')
+
+
+def dump(path, data):
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2)+'\n', encoding='utf8')
+
+
+def load(path):
+    return json.loads(path.read_text(encoding='utf8'))
+
+
+def require(condition, message):
+    if not condition:
+        raise p.PatternError(message)
+
+
+def fit_square(im):
+    """Preserve the entire illustration, never silently cut off hair or flowers."""
+    im = im.convert('RGB')
+    w,h = im.size
+    # Use median border color for neutral padding (once, never per-grid blending).
+    arr = np.asarray(im)
+    border=np.concatenate((arr[0],arr[-1],arr[:,0],arr[:,-1]))
+    bg=tuple(int(x) for x in np.median(border,axis=0))
+    canvas=Image.new('RGB',(max(w,h),)*2,bg)
+    canvas.paste(im,((canvas.width-w)//2,(canvas.height-h)//2))
+    return canvas
+
+
+def samples(stage, n, variant):
+    if variant=='flat':
+        return np.asarray(stage.resize((n,n),Image.Resampling.BOX),dtype=float)
+    # Median of each cell's central 3x3 samples: avoids tiny antialiasing slivers.
+    a=np.asarray(stage.resize((n*5,n*5),Image.Resampling.BOX),dtype=float)
+    return np.median(a.reshape(n,5,n,5,3)[:,1:4,:,1:4,:],axis=(1,3))
+
+
+def map_candidate(stage, n, colors, palette, variant):
+    data=samples(stage,n,variant)
+    return p.quantize_pixels(data,n,colors,palette)
+
+
+def make_comparison(root, original, stage, variants, palette):
+    labels=['Original reference','AI cartoon base','Detail - central median','Flat - area mean','Approved style benchmark (87)']
+    benchmark=p.semantic_image(p.read_matrix(p.ROOT/'examples'/'approved_87x87.csv'),palette)
+    images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS],benchmark]
+    canvas=Image.new('RGB',(1380,1090),'#f7f3ef');d=ImageDraw.Draw(canvas)
+    d.text((25,15),'FIRST SHEET / VISUAL REVIEW - benchmark is style only',font=p.font(26,True),fill='#30282e')
+    for i,(im,label) in enumerate(zip(images,labels)):
+        x=25+(i%3)*450;y=65+(i//3)*510
+        resample=Image.Resampling.NEAREST if i>=2 else Image.Resampling.LANCZOS
+        thumb=ImageOps.contain(im.convert('RGB'),(430,430),resample)
+        canvas.paste(thumb,(x+(430-thumb.width)//2,y+(430-thumb.height)//2))
+        d.text((x,y+445),label,font=p.font(20,True),fill='#30282e')
+    canvas.save(root/'review_comparison.png')
+
+
+def prepare(args):
+    original,art,root=Path(args.image),Path(args.cartoon_image),Path(args.out)
+    require(original.is_file() and art.is_file(),'需要原始照片及实际生成的卡通底图文件；不允许用离线滤镜冒充 AI 底图')
+    require(p.sha_file(original)!=p.sha_file(art),'卡通底图与原图相同，不能作为卡通化结果')
+    require(1<=args.grid<=145 and 1<=args.colors<=120,'grid 1..145, colors 1..120')
+    require(not root.exists(),'候选目录已存在，请用新目录')
+    photo=open_rgb(original,max_side=1200);stage=fit_square(open_rgb(art,max_side=1200))
+    require(len(stage.getcolors(maxcolors=2) or [])!=1,'卡通底图是单色，请重新生成')
+    palette=p.load_palette(p.PALETTE);root.mkdir(parents=True)
+    shutil.copyfile(p.PALETTE,root/'palette.json')
+    stage.save(root/'cartoon_stage.png')
+    variants={}; metadata={}
+    for v in VARIANTS:
+        rows=map_candidate(stage,args.grid,args.colors,palette,v)
+        counts,empty,w,h=p.stats(rows,palette)
+        require(len(counts)>=2,'转换后不足两种颜色，不能交付肖像候选')
+        target=root/v;target.mkdir()
+        p.write_matrix(target/'candidate_matrix.csv',rows)
+        p.save_preview(rows,palette,target/'candidate_preview.png')
+        p.semantic_image(rows,palette).save(target/'semantic_pixels.png')
+        variants[v]=rows
+        metadata[v]={'codes_sha256':p.digest_codes(rows),'colors':len(counts),'beads':sum(counts.values()),
+                     'files':{f.name:p.sha_file(f) for f in target.iterdir()}}
+    make_comparison(root,photo,stage,variants,palette)
+    manifest={'schema':SCHEMA,'status':'UNAPPROVED','grid':args.grid,'max_colors':args.colors,
+              'original_sha256':p.sha_file(original),'external_cartoon_sha256':p.sha_file(art),
+              'stage_sha256':p.sha_file(root/'cartoon_stage.png'),'palette_sha256':p.sha_file(root/'palette.json'),
+              'comparison_sha256':p.sha_file(root/'review_comparison.png'),'variants':metadata}
+    dump(root/'prepare.json',manifest)
+    dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
+         'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in CHECKS},'notes':''})
+    print('PREPARED: inspect review_comparison.png and chosen candidate at full resolution; then record actual visual review. No master created.')
+
+
+def verified_variant(root, v):
+    require(v in VARIANTS,'unknown variant')
+    meta=load(root/'prepare.json')
+    require(meta['schema']==SCHEMA and meta['status']=='UNAPPROVED','invalid prepare manifest')
+    for file,key in [('palette.json','palette_sha256'),('cartoon_stage.png','stage_sha256'),('review_comparison.png','comparison_sha256')]:
+        require(p.sha_file(root/file)==meta[key],f'{file} changed')
+    target=root/v; info=meta['variants'][v]
+    for fn,sha in info['files'].items():
+        require(Path(fn).name==fn and p.sha_file(target/fn)==sha,f'{v}/{fn} changed')
+    rows=p.read_matrix(target/'candidate_matrix.csv');palette=p.load_palette(root/'palette.json')
+    counts,empty,w,h=p.stats(rows,palette)
+    require(p.digest_codes(rows)==info['codes_sha256'],'matrix digest mismatch')
+    require((w,h)==(meta['grid'],meta['grid']) and len(counts)<=meta['max_colors'],'grid/color limit mismatch')
+    require(len(counts)==info['colors'] and sum(counts.values())==info['beads'],'statistics mismatch')
+    with Image.open(target/'semantic_pixels.png') as pixels:
+        require(pixels.mode=='RGBA' and pixels.size==(w,h) and pixels.tobytes()==p.semantic_image(rows,palette).tobytes(),'semantic pixels mismatch')
+    return meta,rows,palette,counts,empty
+
+
+def review_ok(review,meta,v):
+    require(review.get('variant')==v and review.get('codes_sha256')==meta['variants'][v]['codes_sha256'] and review.get('comparison_sha256')==meta['comparison_sha256'],'review not bound to current candidate/comparison')
+    require(all(review.get('checks',{}).get(k) is True for k in CHECKS),'visual review incomplete or failed; correct the illustration or regenerate candidate before showing the chart')
+    require(isinstance(review.get('notes'),str) and len(review['notes'].strip())>=12,'record concrete visible features and comparison; no boilerplate approvals')
+
+
+def select(args):
+    root,out=Path(args.prepared),Path(args.out)
+    meta,rows,palette,counts,empty=verified_variant(root,args.variant)
+    review=load(Path(args.review));review_ok(review,meta,args.variant)
+    require(not out.exists(),'output exists; refuse overwrite')
+    out.mkdir(parents=True)
+    p.write_matrix(out/'candidate_matrix.csv',rows)
+    shutil.copyfile(root/'palette.json',out/'palette.json')
+    p.semantic_image(rows,palette).save(out/'semantic_pixels.png')
+    p.save_preview(rows,palette,out/'pixel_preview.png')
+    p.legend_csv(out/'legend.csv',counts,palette)
+    p.render_grid(rows,palette,cell=min(50,max(24,3800//meta['grid']))).save(out/'pattern_with_codes.png')
+    p.render_customer(rows,palette,args.name,29,counts,empty,out/'candidate_sheet.png',approved=False)
+    dump(out/'visual_review.json',review)
+    info={'schema':SCHEMA,'status':'UNAPPROVED','variant':args.variant,'grid':meta['grid'],
+          'codes_sha256':p.digest_codes(rows),'colors':len(counts),'beads':sum(counts.values()),'empty':empty,
+          'board_count':len(p.boards(rows,29)),'visual_review':'recorded, NOT customer approval',
+          'files':{f.name:p.sha_file(f) for f in out.iterdir()}}
+    dump(out/'candidate_validation.json',info)
+    verify(args=argparse.Namespace(prepared=str(root),sheet=str(out)))
+    print('FIRST SHEET READY: candidate_sheet.png. Await explicit customer approval before freeze.')
+
+
+def verify(args):
+    root,out=Path(args.prepared),Path(args.sheet)
+    info=load(out/'candidate_validation.json')
+    require(info['schema']==SCHEMA and info['status']=='UNAPPROVED','invalid candidate status')
+    v=info['variant'];meta,rows,palette,counts,empty=verified_variant(root,v)
+    review_ok(load(out/'visual_review.json'),meta,v)
+    required={'candidate_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','legend.csv','pattern_with_codes.png','candidate_sheet.png','visual_review.json'}
+    require(set(info['files'])==required,'incomplete first sheet file list')
+    for fn,sha in info['files'].items(): require(p.sha_file(out/fn)==sha,f'{fn} changed')
+    require(p.read_matrix(out/'candidate_matrix.csv')==rows and p.digest_codes(rows)==info['codes_sha256'],'selected matrix changed')
+    require(p.load_palette(out/'palette.json')==palette,'selected palette changed')
+    with Image.open(out/'semantic_pixels.png') as im:
+        require(im.mode=='RGBA' and im.size==(meta['grid'],)*2 and im.tobytes()==p.semantic_image(rows,palette).tobytes(),'selected semantic pixels mismatch')
+    require((info['grid'],info['colors'],info['beads'],info['empty'],info['board_count'])==(meta['grid'],len(counts),sum(counts.values()),empty,len(p.boards(rows,29))),'selected counts changed')
+    import csv
+    with (out/'legend.csv').open(encoding='utf-8-sig',newline='') as f:
+        legend=list(csv.reader(f))[1:]
+    require(len(legend)==len(counts) and {r[1]:(r[0],r[2],int(r[3])) for r in legend}=={c:('MARD',palette[c],n) for c,n in counts.items()},'legend mismatch')
+    print('VERIFIED: candidate matrix, palette, pixels, counts and generated file hashes. Visual review is a declared human/agent check, not algorithmic aesthetic certification.')
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='cmd',required=True)
+    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--cartoon-image',required=True);a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.set_defaults(func=prepare)
+    a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
+    a=sub.add_parser('verify');a.add_argument('--prepared',required=True);a.add_argument('--sheet',required=True);a.set_defaults(func=verify)
+    args=parser.parse_args()
+    try: args.func(args)
+    except (p.PatternError,OSError,ValueError,KeyError,TypeError) as exc:
+        print('ERROR:',exc,file=sys.stderr);return 2
+    return 0
+
+
+if __name__=='__main__':raise SystemExit(main())

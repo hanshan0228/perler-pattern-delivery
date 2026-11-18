@@ -1,4 +1,4 @@
-# Validation report — v2.2.0
+# Validation report — v2.3.0
 
 Run locally with:
 
@@ -6,7 +6,7 @@ Run locally with:
 python -m unittest discover -s tests -v
 ```
 
-**17 tests passed** in this build environment. Checks include:
+**24 tests passed** in this build environment. Checks include:
 
 - MARD 291 reference colors, approved 58×58 (20 colors) and 87×87 (33 colors) matrices, SHA-256 row-code digests unchanged.
 - Strict CSV/JSON reading, transparent EMPTY, 29×29 board partitioning.
@@ -18,3 +18,8 @@ python -m unittest discover -s tests -v
 - End-to-end candidate→master→deliver→verify succeeded.
 
 This suite validates data integrity, not universal portrait likeness or physical bead color calibration. Manual review of facial features, hair, flowers and thin structural details is mandatory before freezing any new design.
+
+## v2.3 additions
+
+- Seven new tests cover intact framing, required distinct inputs, review rejection, digest binding, valid two-variant matrices, verified unapproved chart and edited-file rejection.
+- Local visual integration check reused the previously approved portrait's cartoon source privately: selected area-average candidate, 87×87, 28 colors, 7,569 beads, 9 boards. New matrix is unapproved; existing 33-color and 20-color reference matrices remain unchanged. No new customer photo or source artwork is included.

@@ -210,7 +210,7 @@ def render_grid(rows, palette, *, cell=42, bw=False, labeled=True, board_line=29
     return canvas
 
 
-def render_customer(rows, palette, title, board_size, counts, empty, out):
+def render_customer(rows, palette, title, board_size, counts, empty, out, *, approved=True):
     h,w=len(rows),len(rows[0]); n=len(counts)
     W=4960
     maxsize=max(w,h)
@@ -237,13 +237,13 @@ def render_customer(rows, palette, title, board_size, counts, empty, out):
     img.paste(im2.convert('RGB'),(255,140))
     title=(title or '拼豆图纸').replace('\n',' ').strip()[:30]
     t((958,150),'拼豆定制图纸  |  '+title,95,bold=True)
-    t((958,304),'已确认主版本 · 色号与网格数据严格一致',48,'#755c67')
+    t((958,304),'已确认主版本 · 色号与网格数据严格一致' if approved else '待确认图纸 · 色号与网格数据严格一致',48,'#755c67')
     carddata = [f'{w} × {h} 标准网格', f'{n} 种参考色号', f'{sum(counts.values()):,} 颗豆子', f'{math.ceil(w/board_size)*math.ceil(h/board_size)} 块 {board_size}×{board_size} 板']
     xs=[958,1700,2430,3170]; ws=[700,690,690,1540]
     for xpos,width,label in zip(xs,ws,carddata):
         rr((xpos,430,xpos+width,535),22,'#f8eef1','#f8eef1')
         t((xpos+24,450),label,46,'#994967',True)
-    t((960,612),'以下颜色和格内编号全部来自已锁定矩阵，非 AI 重新生成。',42,'#776b71')
+    t((960,612),'以下颜色和格内编号全部来自已锁定矩阵，非 AI 重新生成。' if approved else '候选矩阵直接绘制 · 请先确认造型与颜色，再冻结为正式版本。',42,'#776b71')
     # Underlying grid cells, with visible label text and line overlay.
     gf=font(max(11,int(cell*.43)),True)
     for r,row in enumerate(rows):
@@ -285,9 +285,9 @@ def render_customer(rows, palette, title, board_size, counts, empty, out):
         t((xp+109,yp+75),f'{qty:,} 颗',34,'#716570')
     footer_y=H-330
     d.line((228,footer_y,W-228,footer_y),fill='#ded1d7',width=4)
-    t((228,footer_y+45),'严格校验：一格一色号，配色与总数来自相同的已确认原始矩阵。',38,'#655963')
+    t((228,footer_y+45),'严格校验：一格一色号，配色与总数来自相同的已确认原始矩阵。' if approved else '候选图纸：一格一色号，配色与总数来自同一候选矩阵。',38,'#655963')
     t((228,footer_y+110),'说明：屏幕颜色为参考 HEX，实物批次可能有色差；空位标 ×，不需要放豆。',36,'#7c7077')
-    t((W-228,H-70),f'{w}×{h} · 单页顾客交付',31,'#9b8791',anchor='ra')
+    t((W-228,H-70),f'{w}×{h} · '+('单页顾客交付' if approved else '单页待确认图纸'),31,'#9b8791',anchor='ra')
     img.save(out,optimize=True,dpi=(300,300))
     return img
 
@@ -650,7 +650,7 @@ def generate(args):
 
 
 def parser():
-    ap=argparse.ArgumentParser(description='Perler/MARD cartoon + pixel-locked pattern generation & customer delivery v2.2')
+    ap=argparse.ArgumentParser(description='Perler/MARD cartoon + pixel-locked pattern generation & customer delivery v2.3')
     sub=ap.add_subparsers(dest='command',required=True)
     p=sub.add_parser('freeze',help='Save approved matrix as immutable master')
     p.add_argument('--matrix',required=True);p.add_argument('--out',required=True)

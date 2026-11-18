@@ -1,13 +1,38 @@
 ---
 name: perler-pattern-delivery
-description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mode、MARD color matching, pre-pixelated images, pixel grid alignment, or verified customer bead pattern delivery. Supports candidate generation but strictly locks user-approved MASTER matrices for every customer sheet and printable chart."
+description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mode、MARD color matching, pre-pixelated images, pixel grid alignment, or verified customer bead pattern delivery. First-sheet workflow defaults to a real cartoon illustration and a programmatically verified numbered chart; strictly locks user-approved MASTER matrices for every customer sheet and printable chart."
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
+
+## P0 默认入口：卡通风格拼豆图纸，不是卡通插画
+
+**调用者不需要另写长提示词。** 听到“卡通版”“卡通拼豆图纸”“做成拼豆图纸”“再给我一个成品”且上下文是制作拼豆图纸，默认最终产物为顾客单页**有色号的施工图**。新肖像默认精致平涂卡通；用户明确要求写实才用 photo 模式。只有明确要求“卡通底图”“只要效果预览/实物模拟”才仅交付相应图。用户要改已确认图纸排版则优先使用 MASTER，不重新卡通化。
+
+### 新肖像的必经生产线（v2.3，首次使用先读这里）
+
+1. 使用实际上传的原照片作为图像模型编辑参考。按 [首稿规范](references/FIRST_SHEET.md) 生成**无网格、无色号、无标题**的精致平涂卡通底图。必须用真正的图像生成/编辑模型或用户提供的卡通原稿；离线滤镜只能是用户明确选择的实验模式。没有图像工具和真实底图就说明缺口，不能偷偷改用滤镜，也不能伪造图纸。
+2. 运行首稿生产线（默认 87×87、最多 33 色；用户指定值优先）：
+
+```bash
+python scripts/first_sheet.py prepare --image original.jpg --cartoon-image cartoon.png --grid 87 --colors 33 --out ./review_v1
+```
+
+3. **自己先检查** `review_comparison.png` 和候选大图。比较两个候选、参考原照片和已有基准。若造型不对、五官丢失、花饰/关键轮廓被切掉或存在明显噪声，重新生成卡通底图/候选并比较；最多两轮修正，不得无限重试。在仍不合格时明确说明失败，不把差稿当合格首稿。禁止仅依据像素 hash 宣称画质合格。
+4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail` 或 `flat`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
+
+```bash
+python scripts/first_sheet.py select --prepared ./review_v1 --variant flat --review ./review.json --name '卡通定制肖像' --out ./first_sheet
+python scripts/first_sheet.py verify --prepared ./review_v1 --sheet ./first_sheet
+```
+
+5. **首次用户可见回复**以 `candidate_sheet.png` 为主（包含效果预览、真实网格、每格色号、坐标、MARD 配色与数量）；附高清图/可放大总图和 CSV。不以纯插画、过程图或实物模拟代替图纸，不要求用户反复提醒。说明它是待确认图纸，未获确认不得称正式已批准版本。只有用户确认后才运行 `freeze` / `deliver` / `verify`，不得覆盖旧 MASTER。
+
+程序 `select` 会拒绝缺失或失败的视觉检查、过时的候选哈希；它检查的是审核记录而不是自动识别美学质量。`verify` 校验机器可验证的矩阵、色卡、像素、统计与生成文件哈希。任何检查失败则不交付。
 
 ## 第一原则：先固定数据，再制作所有视觉交付物
 
@@ -51,7 +76,7 @@ python scripts/perler_delivery.py verify \
 
 `freeze` 拒绝写入已经存在的 MASTER。`deliver` 只写到新目录并拒绝覆盖已有交付件。要升级版本就使用新的项目目录（v2、v3）。
 
-### 模式 B：从全新照片生成候选（不是已确认图）
+### 模式 B：明确要求写实的普通照片候选（非默认肖像模式）
 
 ```bash
 python scripts/perler_delivery.py generate \
@@ -61,11 +86,11 @@ python scripts/perler_delivery.py generate \
 
 处理过程：居中裁剪 → BOX 降采样 → Lab 颜色聚类 → 最接近的 MARD 参考色号。输出候选 CSV 和像素预览。**必须审查五官、花瓣、颗粒噪声，再由顾客确认后单独 freeze**。需要更精细的卡通化时使用外部图像工具，但只能用于生成候选，不得替代已确认 MASTER。
 
-### 模式 C：新增真人照片 → 卡通拼豆图（v2.2.0）
+### 模式 C：底层卡通实验工具（非默认首稿入口）
 
 **优先使用卡通预处理，再映射拼豆色号，不允许只靠缩小照片来冒充 AI 卡通。**
 
-离线卡通模式（本地、免费、不访问云 API、无需模型权重）：
+只有用户明确接受传统滤镜效果时才使用离线卡通实验模式（本地、免费、不访问云 API、无需模型权重）：
 
 ```bash
 python scripts/perler_delivery.py generate \
@@ -75,7 +100,7 @@ python scripts/perler_delivery.py generate \
 
 可选预设：`soft`（默认、柔和平涂/肖像）、`comic`（更明显的描边）、`poster`（平涂海报、较少描边）。三者均是真正的图像预处理：边缘保持滤波 → 平涂减色 → 可控描边，再转换成真实色号矩阵。`cartoon_stage.png` 是**预处理阶段图**，不是顾客施工图。
 
-**更高质量的人物插画化：可选外部 AI 生成器（必须使用已授权模型/服务）。** 若执行环境有图像生成工具，可先使用 [卡通风格说明](references/CARTOON_STYLES.md) 转换照片，待输出文件实际存在后输入到 Skill：
+**外部 AI 插画化是高质量肖像的默认上游步骤（必须使用已授权模型/服务）。** 对首次完整单页图纸优先使用前述 `first_sheet.py`；以下是兼容旧流程的低层命令。 若执行环境有图像生成工具，可先使用 [卡通风格说明](references/CARTOON_STYLES.md) 转换照片，待输出文件实际存在后输入到 Skill：
 
 ```bash
 python scripts/perler_delivery.py generate \
@@ -150,12 +175,12 @@ python scripts/perler_delivery.py remove-background \
 
 遇到技术和兼容问题查看 [技术说明](references/TECHNICAL.md)；来源与许可证说明见 [来源](references/SOURCES.md)。
 
-## 卡通模式新增验收要求（v2.2）
+## 底层卡通/像素模式验收要求（兼容 v2.2）
 
 - 保留照片模式旧行为；不可将默认 `generate` 偷偷升级为卡通。
 - 本地离线卡通是传统图像处理，不得自称等同于 photo2cartoon 或 AnimeGANv2 的神经网络效果。
 - 高质量 AI 卡通候选必须标注外部来源，不下载或捆绑未授权模型，不默默传输私人人像。
-- 所有新候选都输出 `candidate_matrix.csv`、`candidate_preview.png`、`candidate_codes.png`、`candidate_info.json`；cartoon 额外输出 `cartoon_stage.png`。
+- 底层 `generate` / `import-pixel` 候选输出 `candidate_matrix.csv`、`candidate_preview.png`、`candidate_codes.png`、`candidate_info.json`；cartoon 额外输出 `cartoon_stage.png`。
 - 像素导入必须以格子中心统计颜色，禁止 BOX 重采样把黑网格线混进豆色。
 - 所有新生成图均需要确认，然后单独 `freeze`；冻结后的生产交付依然由旧版 `deliver` 和 `verify` 完成。
 - 每次修改脚本后运行 `python -m unittest discover -s tests -v`，且必须保留已确认 58×58 和 87×87 的哈希回归测试。

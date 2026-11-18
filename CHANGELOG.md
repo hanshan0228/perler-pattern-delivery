@@ -1,3 +1,10 @@
+## v2.3.0 — First-sheet quality gate
+
+- Default portrait intent resolves to a real cartoon-based numbered sheet.
+- Added independently runnable prepare/select/verify pipeline with two candidates, a review bound to grid and comparison digests, and an unapproved single-page output.
+- Preserve existing approved matrices and freeze/deliver APIs.
+- Offline filters remain experimental; visual review is required, not automatic aesthetic certification.
+
 # Changelog
 
 ## 2.2.0 — Cartoon candidate generation

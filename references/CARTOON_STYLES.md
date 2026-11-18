@@ -1,8 +1,10 @@
 # Cartoon-style source guide for reliable bead patterns
 
+For new portrait charts, follow [FIRST_SHEET.md](FIRST_SHEET.md) first. These legacy options are not the recommended first-sheet entry point.
+
 ## Engine selection
 
-- `--mode cartoon --cartoon-engine offline` (default): reproducible local edge-preserving smoothing, posterization and optional contour overlay. No downloads or network; cannot alter head/body proportions like a trained generative model.
+- `--mode cartoon --cartoon-engine offline` (legacy low-level experimental mode; NOT the Skill default): reproducible local edge-preserving smoothing, posterization and optional contour overlay. No downloads or network; cannot alter head/body proportions like a trained generative model.
 - `--mode cartoon --cartoon-engine external --cartoon-image <PNG>`: import an already stylized image from a tool the user has the right to use. The CLI **does not** invoke a remote model or download a model. It stores a SHA-256 fingerprint of that image and its rendered copy for repeatability.
 - `--mode photo`: preserve the original downsample + Lab palette mapping pipeline.
 - `--mode pixel` or `import-pixel`: for already-pixelated grid art, central-median sampling avoids including grid borders.

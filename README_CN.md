@@ -1,4 +1,9 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.2.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.3.0
+
+## 默认首稿流程（v2.3）
+
+新照片默认输出卡通风格、有格内 MARD 色号的单页施工图；不再默认走离线滤镜。先用图像模型制作真实卡通底图，再用 `scripts/first_sheet.py prepare` 生成两个候选，实际检查后 `select`，最后 `verify`。详见 [首稿规范](references/FIRST_SHEET.md) 与 [SKILL.md](SKILL.md)。待确认图纸不等于已冻结 MASTER。
+
 
 这是实际可运行的 Agent Skill，而不是提示词合集。
 
@@ -20,7 +25,7 @@ python scripts/perler_delivery.py deliver --master ./project/master --out ./proj
 python scripts/perler_delivery.py verify --master ./project/master --delivery ./project/delivery
 ```
 
-## 新增：一键卡通模式（v2.2）
+## 可选底层工具（兼容 v2.2，非默认首稿入口）
 
 内置离线滤镜：柔和卡通 `soft`、漫画描边 `comic`、平涂海报 `poster`。这是无网络/无模型的传统算法，**不等同于生成式 AI 卡通人像**。
 
@@ -36,6 +41,8 @@ python scripts/perler_delivery.py generate --image /path/photo.jpg --mode cartoo
   --cartoon-engine external --cartoon-image /path/cartoon.png \
   --grid 87 --colors 33 --out ./candidate_ai
 ```
+
+可选安装 `python -m pip install opencv-python-headless` 提升离线轮廓处理效果；未安装时自动使用 Pillow 实现。
 
 **当前 CLI 不会自动访问图片 API，不需要配置 API Key，不会把私人照片上传到网络。** 对外部图片的模型/服务商业授权需要自行核查。优先人工审核候选图的五官、嘴型、头发与花朵，选定版本后冻结。
 
