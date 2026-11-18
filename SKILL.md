@@ -4,7 +4,7 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.4.0"
+  version: "2.5.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
@@ -23,7 +23,7 @@ metadata:
 
 **调用者不需要另写长提示词。** 听到“卡通版”“卡通拼豆图纸”“做成拼豆图纸”“再给我一个成品”且上下文是制作拼豆图纸，默认最终产物为顾客单页**有色号的施工图**。新肖像默认精致平涂卡通；用户明确要求写实才用 photo 模式。只有明确要求“卡通底图”“只要效果预览/实物模拟”才仅交付相应图。用户要改已确认图纸排版则优先使用 MASTER，不重新卡通化。
 
-### 新肖像的必经生产线（v2.4，首次使用先读这里）
+### 新肖像的必经生产线（v2.5，首次使用先读这里）
 
 1. 使用实际上传的原照片作为图像模型编辑参考。按 [首稿规范](references/FIRST_SHEET.md) 生成**无网格、无色号、无标题**的精致平涂卡通底图。必须用真正的图像生成/编辑模型或用户提供的卡通原稿；离线滤镜只能是用户明确选择的实验模式。没有图像工具和真实底图就说明缺口，不能偷偷改用滤镜，也不能伪造图纸。
 2. 运行首稿生产线（默认 87×87、最多 33 色；用户指定值优先）：
@@ -32,8 +32,8 @@ metadata:
 python scripts/first_sheet.py prepare --image original.jpg --cartoon-image cartoon.png --grid 87 --colors 33 --out ./review_v1
 ```
 
-3. **自己先检查** `review_comparison.png` 和候选大图。比较两个候选、参考原照片和已有基准。若造型不对、五官丢失、花饰/关键轮廓被切掉或存在明显噪声，重新生成卡通底图/候选并比较；最多两轮修正，不得无限重试。在仍不合格时明确说明失败，不把差稿当合格首稿。禁止仅依据像素 hash 宣称画质合格。
-4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail` 或 `flat`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
+3. **自己先检查** `review_comparison.png` 和候选大图。比较三个候选、参考原照片和已有基准。若造型不对、五官丢失、花饰/关键轮廓被切掉或存在明显噪声，重新生成卡通底图/候选并比较；最多两轮修正，不得无限重试。在仍不合格时明确说明失败，不把差稿当合格首稿。禁止仅依据像素 hash 宣称画质合格。
+4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail`、`flat` 或 `portrait`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
 
 ```bash
 python scripts/first_sheet.py select --prepared ./review_v1 --variant flat --review ./review.json --name '卡通定制肖像' --out ./first_sheet
@@ -43,6 +43,15 @@ python scripts/first_sheet.py verify --prepared ./review_v1 --sheet ./first_shee
 5. **首次用户可见回复**以 `candidate_sheet.png` 为主（包含效果预览、真实网格、每格色号、坐标、MARD 配色与数量）；附 A2 PDF、高清图/可放大总图和 CSV。不以纯插画、过程图或实物模拟代替图纸，不要求用户反复提醒。说明它是待确认图纸，未获确认不得称正式已批准版本。只有用户确认后才运行 `freeze` / `deliver` / `verify`，不得覆盖旧 MASTER。
 
 程序 `select` 会拒绝缺失或失败的视觉检查、过时的候选哈希；它检查的是审核记录而不是自动识别美学质量。`verify` 校验矩阵、固定参考色卡、语义像素、数量、实际 PNG/PDF 重渲染结果与文件哈希。任何检查失败则不交付。
+
+
+### v2.5 人像视觉优化（只对新候选生效）
+
+- `prepare` 同时生成 `detail`（原中央中位采样）、`flat`（原面积平均采样）、`portrait`（直接从固定 MARD 色卡选色，重点区域加权）。旧候选算法及已确认 MASTER 原样保留。
+- `--focus X0 Y0 X1 Y1` 可重复指定经实际观察确认的重点区域（0–1 的归一化坐标，相对于补边后的方形底图），例如 `--focus .30 .15 .70 .64`。这不是自动人脸识别。坐标不能照抄到其他照片，应先看本次底图。没有重点区域时仅按图像边缘强度加权。
+- `portrait` 使用真实 MARD 色号内的贪心组合选色；以加权 CIELAB ΔE76 平方误差为优化目标，不用无效的聚类中心冒充色卡。仅在重点区域以外、低反差、至少三个邻格同色且替换色差增加很小时清理单格杂点。不得承诺眼睛自动正确。
+- `prepare.json` 的 `quality_metrics` 给出同一面积平均底图上的色差、重点区域色差、孤立格数和实际颜色数。它们是诊断指标，不是审美或相似度评分；颜色数、色差和孤立格之间有取舍。验证会重新计算主要指标。禁止仅凭数值自动指定获胜候选。
+- 三个候选都不够自然时，停止交付；征得用户允许再尝试更大网格、改底图或手工精修，绝不虚构画质合格。所有 V2.4 确定性渲染校验照常执行。
 
 ## 第一原则：先固定数据，再制作所有视觉交付物
 
@@ -95,7 +104,7 @@ python scripts/first_sheet.py select --prepared ./realistic_review --variant fla
 python scripts/first_sheet.py verify --prepared ./realistic_review --sheet ./realistic_sheet
 ```
 
-写实模式直接采样原照片（不接受卡通底图参数），两种采样方案和全套首稿验收与卡通版一致。`candidate_sheet.png` 和 `candidate_sheet_A2.pdf` 是待确认施工图。视觉审核须确认真实风格、原姿态、五官及重要细节。写实版不强制卡通化。
+写实模式直接采样原照片（不接受卡通底图参数），三种候选方案和全套首稿验收与卡通版一致。`candidate_sheet.png` 和 `candidate_sheet_A2.pdf` 是待确认施工图。视觉审核须确认真实风格、原姿态、五官及重要细节。写实版不强制卡通化。
 
 ### 模式 C：底层卡通实验工具（非默认首稿入口）
 

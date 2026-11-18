@@ -1,18 +1,16 @@
-# Validation report — v2.4.0
+# Validation report — v2.5.0
 
-Run: `python -m unittest discover -s tests -v`
+Local command: `python -m unittest discover -s tests -v` — 37 tests passed (31 existing, 6 new). Exit status 0.
 
-31 tests passed in the local build environment (24 previous tests and seven new regression tests).
+New regressions: deterministic actual-palette selection and color budget; weighted objective before cleanup; normalized focus validation and weighting; conservative singleton cleanup outside protected focus cells; high-contrast eye-like cell preservation; three variant generation and re-computed metric tamper rejection. The existing continuous-axis, numbered-cell, pinned-palette, re-rendered PNG/PDF, approved-matrix and ZIP checks remain enabled. The production renderer, palette, and two approved matrices are byte-identical to v2.4.0.
 
-- Continuous coordinates: all 232 labels across the four sides of a 58×58 chart, including 49–51 and 55–57.
-- Strict matrix input: missing column 56 and incorrectly numbered row 90 are rejected.
-- Actual cell-label drawing and sampled color fills match the supplied codes, including empty cells.
-- Wrong candidate chart PNG, numbered-grid PNG and PDF are rejected even after updating their manifest hashes.
-- Substituting a wrong color for A1 in the candidate reference palette is rejected even after updating the palette hash.
-- Approved delivery PNG replacement is rejected even after rehashing.
-- Realistic first-sheet mode runs without a cartoon artifact, creates an unapproved chart and A2 PDF, and verifies both.
-- Approved 58×58 and 87×87 matrix fingerprints and counts remain unchanged; all previous tests passed.
+Two local 87×87 image trials generated all three candidates and passed `verified_variant` (six matrices, each 7,569 beads). No new customer images are published in this repository. Aesthetic approval was not inferred from the diagnostic checks.
 
-Integration: re-exported the approved 58×58 example as 20 MARD reference colors, 3,364 beads, four 29×29 boards. Full PNG/PDF re-render checks, inventory and ZIP verification passed. Rendered and inspected the A2 PDF.
+Comparison to legacy area-mean variant; ΔE76 measured against the same area-average stage. A smaller metric means closer to the chosen digital reference, not better identity or aesthetics.
 
-This is render/data validation under the same trusted renderer, font and dependency environment, not a guarantee of artistic likeness, physical bead color or immunity to an agent bypassing the workflow. The new real-photo sample underwent candidate comparison but was not approved because its facial color transitions were unsatisfactory. No new customer image is included.
+| Trial | Legacy actual colors | New actual colors | Legacy focus mean ΔE76 | New focus mean ΔE76 | New at equal actual color budget | Legacy / new isolated cells |
+|---|---:|---:|---:|---:|---:|---:|
+| Cartoon, max 33 | 28 | 33 | 6.1771 | 5.2448 | 5.4361 (28 colors) | 1060 / 1096 |
+| Photo, max 40 | 14 | 39 | 7.7478 | 7.2767 | 7.3740 (14 colors) | 269 / 431 |
+
+The fair same-actual-color comparison is a supplemental offline comparison, not an additional default variant. Results are specific to these two images and manually selected focus regions. New palette selection can increase isolated cells and palette inventory; neither metric claims physical bead accuracy or general visual superiority. Manual visual review remains mandatory. The photo sample still exhibits visible color banding; it has not been approved or frozen.

@@ -16,7 +16,8 @@ from PIL import Image, ImageDraw, ImageOps
 import perler_delivery as p
 from cartoon_pipeline import open_rgb
 
-SCHEMA = 'first-sheet-v2'
+SCHEMA = 'first-sheet-v3'
+LEGACY_SCHEMA = 'first-sheet-v2'
 PHOTO_CHECKS = ('recognizable_subject', 'realistic_not_cartoon', 'framing_and_silhouette',
                 'key_features_readable', 'clean_regions_and_no_artifacts')
 
@@ -24,7 +25,7 @@ def checks_for(mode):
     if mode=='photo': return PHOTO_CHECKS
     if mode=='cartoon': return CHECKS
     raise p.PatternError('invalid portrait mode')
-VARIANTS = ('detail', 'flat')
+VARIANTS = ('detail', 'flat', 'portrait')
 CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
           'key_features_readable', 'clean_regions_and_no_artifacts')
 
@@ -69,14 +70,14 @@ def map_candidate(stage, n, colors, palette, variant):
 
 
 def make_comparison(root, original, stage, variants, palette, mode="cartoon"):
-    labels=['Original reference','AI cartoon base','Detail - central median','Flat - area mean','Approved style benchmark (87)']
+    labels=['Original reference','AI cartoon base','Detail - central median','Flat - area mean','Portrait - MARD constrained','Approved style benchmark (87)']
     benchmark=p.semantic_image(p.read_matrix(p.ROOT/'examples'/'approved_87x87.csv'),palette)
     images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS],benchmark]
     if mode=='photo':
         labels[1]='Photo source - no cartoon filter'
-        labels=labels[:4]; images=images[:4]
+        labels=labels[:5]; images=images[:5]
     canvas=Image.new('RGB',(1380,1090),'#f7f3ef');d=ImageDraw.Draw(canvas)
-    d.text((25,15),'FIRST SHEET / VISUAL REVIEW - benchmark is style only',font=p.font(26,True),fill='#30282e')
+    d.text((25,15),'FIRST SHEET / VISUAL REVIEW - compare actual pixel candidates',font=p.font(26,True),fill='#30282e')
     for i,(im,label) in enumerate(zip(images,labels)):
         x=25+(i%3)*450;y=65+(i//3)*510
         resample=Image.Resampling.NEAREST if i>=2 else Image.Resampling.LANCZOS
@@ -103,12 +104,22 @@ def prepare(args):
     require(not root.exists(),'候选目录已存在，请用新目录')
     photo=open_rgb(original,max_side=1200);stage=fit_square(open_rgb(art,max_side=1200))
     require(len(stage.getcolors(maxcolors=2) or [])!=1,'卡通底图是单色，请重新生成')
+    import portrait_quality as quality
+    regions=getattr(args,'focus',None) or []
+    quality.focus_mask(args.grid,regions)
     palette=p.load_palette(p.PALETTE);root.mkdir(parents=True)
     shutil.copyfile(p.PALETTE,root/'palette.json')
     stage.save(root/stage_file)
-    variants={}; metadata={}
+    reference=samples(stage,args.grid,'flat')
+    variants={}; metadata={}; scores={}
     for v in VARIANTS:
-        rows=map_candidate(stage,args.grid,args.colors,palette,v)
+        rows=(quality.optimize(reference,args.colors,palette,variants['flat'],regions)
+              if v=='portrait' else map_candidate(stage,args.grid,args.colors,palette,v))
+        if v=='portrait':
+            rows,edits=quality.conservative_cleanup(reference,rows,palette,regions)
+        else: edits=0
+        scores[v]=quality.metrics(reference,rows,palette,regions)
+        scores[v]['conservative_cleanup_edits']=edits
         counts,empty,w,h=p.stats(rows,palette)
         require(len(counts)>=2,'转换后不足两种颜色，不能交付肖像候选')
         target=root/v;target.mkdir()
@@ -122,7 +133,9 @@ def prepare(args):
     manifest={'schema':SCHEMA,'status':'UNAPPROVED','grid':args.grid,'max_colors':args.colors,
               'mode':mode,'stage_file':stage_file,'original_sha256':p.sha_file(original),'source_art_sha256':p.sha_file(art),
               'stage_sha256':p.sha_file(root/stage_file),'palette_sha256':p.sha_file(root/'palette.json'),
-              'comparison_sha256':p.sha_file(root/'review_comparison.png'),'variants':metadata}
+              'comparison_sha256':p.sha_file(root/'review_comparison.png'),'variants':metadata,
+              'focus_regions':regions,'quality_metrics':scores,
+              'quality_metric_reference':'all variants versus same area-average stage; weighted Delta E76, not likeness score'}
     dump(root/'prepare.json',manifest)
     dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
          'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in checks},'notes':''})
@@ -132,7 +145,7 @@ def prepare(args):
 def verified_variant(root, v):
     require(v in VARIANTS,'unknown variant')
     meta=load(root/'prepare.json')
-    require(meta['schema']==SCHEMA and meta['status']=='UNAPPROVED','invalid prepare manifest')
+    require(meta['schema'] in (SCHEMA,LEGACY_SCHEMA) and meta['status']=='UNAPPROVED','invalid prepare manifest')
     mode=meta['mode']; checks_for(mode)
     require(meta['stage_file']==('cartoon_stage.png' if mode=='cartoon' else 'photo_stage.png'),'invalid stage file')
     require(p.sha_file(root/'palette.json')==p.sha_file(p.PALETTE),'candidate palette differs from pinned MARD reference')
@@ -150,6 +163,13 @@ def verified_variant(root, v):
     with Image.open(target/'semantic_pixels.png') as pixels:
         require(pixels.mode=='RGBA' and pixels.size==(w,h) and pixels.tobytes()==p.semantic_image(rows,palette).tobytes(),'semantic pixels mismatch')
     p.verify_png(target/'candidate_preview.png',p.preview_image(rows,palette))
+    if meta['schema']==SCHEMA:
+        import portrait_quality as quality
+        with Image.open(root/meta['stage_file']) as stage:
+            reference=samples(stage.convert('RGB'),meta['grid'],'flat')
+        reported=meta['quality_metrics'][v]
+        recomputed=quality.metrics(reference,rows,palette,meta['focus_regions'])
+        require(all(reported.get(k)==value for k,value in recomputed.items()),'candidate quality metrics mismatch')
     return meta,rows,palette,counts,empty
 
 
@@ -186,7 +206,7 @@ def select(args):
 def verify(args):
     root,out=Path(args.prepared),Path(args.sheet)
     info=load(out/'candidate_validation.json')
-    require(info['schema']==SCHEMA and info['status']=='UNAPPROVED','invalid candidate status')
+    require(info['schema'] in (SCHEMA,LEGACY_SCHEMA) and info['status']=='UNAPPROVED','invalid candidate status')
     v=info['variant'];meta,rows,palette,counts,empty=verified_variant(root,v)
     require(info.get('mode')==meta['mode'],'mode mismatch')
     review_ok(load(out/'visual_review.json'),meta,v)
@@ -211,7 +231,7 @@ def verify(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='cmd',required=True)
-    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.set_defaults(func=prepare)
+    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.set_defaults(func=prepare)
     a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
     a=sub.add_parser('verify');a.add_argument('--prepared',required=True);a.add_argument('--sheet',required=True);a.set_defaults(func=verify)
     args=parser.parse_args()

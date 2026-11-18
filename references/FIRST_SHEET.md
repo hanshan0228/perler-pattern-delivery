@@ -1,4 +1,4 @@
-# 首稿质量规范 / First-sheet quality contract (v2.4)
+# 首稿质量规范 / First-sheet quality contract (v2.5)
 
 ## 目标与输入分流
 
@@ -14,7 +14,7 @@ Adjust important features to actual photo (not all subjects have flowers). Do no
 
 ## Visual review (required before first user-visible chart)
 
-Inspect the original, cartoon base and both candidate previews at thumbnail and full-size. Compare against approved style benchmark generated from `examples/approved_87x87.csv` (33 colors, 7569 beads, digest `8c7bcbb1ad12ac1257b38c89496b1924f93fb40cc06a50c7859d1d2b201e6fc5`). It is a **style** reference — never replace the new customer's subject with it. The user-approved 58×58 benchmark also remains unchanged.
+Inspect the original, cartoon base and all three candidate previews at thumbnail and full-size. Compare against approved style benchmark generated from `examples/approved_87x87.csv` (33 colors, 7569 beads, digest `8c7bcbb1ad12ac1257b38c89496b1924f93fb40cc06a50c7859d1d2b201e6fc5`). It is a **style** reference — never replace the new customer's subject with it. The user-approved 58×58 benchmark also remains unchanged.
 
 The five fields in the review JSON mean:
 
@@ -24,11 +24,11 @@ The five fields in the review JSON mean:
 - `key_features_readable`: eyes, mouth, eyebrows, face contour, clothing/accessories read at actual bead resolution. No disconnected essential features.
 - `clean_regions_and_no_artifacts`: no unintended speckles, dark grid seams, distracting text-like objects, accidental gradients or disproportionately noisy regions. Do not sacrifice essential one-cell details just to reduce noise.
 
-Use concrete notes stating what was inspected and why the selected variant wins. If either cartoon stage or both variants fail, regenerate base (or revise palette/resolution only if allowed) in new folder and rerun. At most two corrective rounds per task. No falsely marked pass or pretend visual review. Preserve every approved matrix. If review cannot be performed, state that and stop; a hash is not aesthetic validation.
+Use concrete notes stating what was inspected and why the selected variant wins. If either cartoon stage or all variants fail, regenerate base (or revise palette/resolution only if allowed) in new folder and rerun. At most two corrective rounds per task. No falsely marked pass or pretend visual review. Preserve every approved matrix. If review cannot be performed, state that and stop; a hash is not aesthetic validation.
 
 ## Deterministic rendering and acceptance
 
-`prepare` pads rather than silently cropping an important silhouette, produces two separate quantized candidates (central median vs area average) and review sheet. No automatic cleanup can delete a critical eye pixel. `select` requires review bound to the selected matrix digest and actual comparison image; its `candidate_sheet.png` is explicitly unapproved. `verify` checks required files, pinned palette, matrix and semantic pixels, exact color counts, legend and file hashes. It cannot certify aesthetic quality or that a human actually looked at the images. User confirmation triggers existing `freeze` and `deliver`; never auto-approve the candidate.
+`prepare` pads rather than silently cropping an important silhouette, produces three candidates (central median, area average, and MARD-constrained portrait) and a review sheet. The portrait variant has a conservative cleanup pass outside designated focus regions and source edges; the other two variants are unchanged. `select` requires review bound to the selected matrix digest and actual comparison image; its `candidate_sheet.png` is explicitly unapproved. `verify` checks required files, pinned palette, matrix and semantic pixels, exact color counts, legend and file hashes. It cannot certify aesthetic quality or that a human actually looked at the images. User confirmation triggers existing `freeze` and `deliver`; never auto-approve the candidate.
 
 ## Final user response
 
@@ -40,3 +40,7 @@ Lead with the selected candidate sheet; include a link to the high-resolution sh
 - `--mode photo` 使用 `realistic_not_cartoon` 替代 `cartoon_not_photo_filter`，其余视觉检查相同；模式记录在候选清单中。
 - 禁止用生成式模型直接画施工图，即使用户说“直接给我图纸”。只可用它生成艺术底图。没有本地执行能力就明确说明限制。
 - 重渲染验证针对同一可信代码与运行环境，不是对任意第三方截图的 OCR 认证，也不是不可伪造的数字签名或自动审美评价。
+
+## v2.5 portrait variant
+
+Use `--focus x0 y0 x1 y1` (repeatable, normalized coordinates of the padded square stage) only after inspecting the actual artwork. This is a manual region, not a face detector. Pixel selection is constrained to actual MARD reference colors and the requested maximum color count; high-contrast edges and focus regions receive greater weight. Cleanup never changes cells within focus rectangles or above the source contrast threshold. Compare actual previews, actual color counts, ΔE76 diagnostics and isolated-cell counts. Do not auto-select the lowest-error variant; more colors can increase complexity and isolated cells. All three variants use the same immutable delivery and review gates.

@@ -1,3 +1,9 @@
+## v2.5.0 — Portrait quality candidates
+
+- Added third `portrait` candidate with palette-constrained weighted ΔE76 optimization, optional reviewed focus regions, and conservative low-contrast singleton cleanup.
+- Added comparable diagnostic metrics with re-computation in candidate verification. The two legacy variants, verified renderer, MARD palette and approved matrices are unchanged.
+- Added six targeted tests; visual review remains mandatory and metric improvements do not imply aesthetic approval.
+
 ## v2.4.0 — Deterministic chart-render integrity
 
 - Explicit no-image-model final-chart contract for every output mode.
