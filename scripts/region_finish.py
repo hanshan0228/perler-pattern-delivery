@@ -15,21 +15,7 @@ KINDS=('skin','hair','cloth','background','protect')
 def masks(n, regions):
     result={k:np.zeros((n,n),bool) for k in KINDS}
     for region in regions:
-        kind=region['kind']; pts=region.get('polygon')
-        if 'runs' in region:
-            if kind not in KINDS or region.get('grid')!=n or pts is not None: raise p.PatternError('invalid raster regions')
-            mask=np.zeros((n,n),bool)
-            for run in region['runs']:
-                if len(run)!=3 or any(type(v) is not int for v in run): raise p.PatternError('invalid region run')
-                y,x0,x1=run
-                if not (0<=y<n and 0<=x0<x1<=n): raise p.PatternError('region run out of bounds')
-                if mask[y,x0:x1].any(): raise p.PatternError('overlapping runs')
-                mask[y,x0:x1]=True
-            if kind!='protect':
-                for k in KINDS[:-1]: result[k][mask]=False
-            result[kind]|=mask
-            continue
-        if pts is None: raise p.PatternError('missing region polygon')
+        kind=region['kind']; pts=region['polygon']
         if kind not in KINDS or len(pts)<3 or any(len(t)!=2 or not all(np.isfinite(t)) or not all(0<=v<=1 for v in t) for t in pts):
             raise p.PatternError('invalid normalized polygon')
         im=Image.new('1',(n*4,n*4));ImageDraw.Draw(im).polygon([(round(x*n*4),round(y*n*4)) for x,y in pts],fill=1)
@@ -39,16 +25,25 @@ def masks(n, regions):
         result[kind]|=mask
     return result
 
-def optimize(data, rows, palette, regions, *, max_colors=None, rare_limit=5):
+def optimize(data, rows, palette, regions=None, *, max_colors=None, rare_limit=5, category_labels=None):
     n=len(rows); a=np.asarray(rows); counts,empty,w,h=p.stats(rows,palette)
     if w!=h or data.shape!=(n,n,3) or empty or not np.isfinite(data).all(): raise p.PatternError('full square finite source required')
     if not isinstance(rare_limit,int) or not 0<=rare_limit<=20: raise p.PatternError('rare limit 0..20')
     budget=len(counts) if max_colors is None else max_colors
     if not 1<=budget<=len(palette): raise p.PatternError('invalid color budget')
-    m=masks(n,regions); lab=p.srgb_lab(data); weight,edge=q.weights(data)
+    if (category_labels is None)==(regions is None):
+        raise p.PatternError('supply exactly one region source: reviewed polygons OR semantic category labels')
+    if category_labels is not None:
+        import semantic_masks
+        m=semantic_masks.masks_from_classes(category_labels, data)
+        region_source='semantic_multiclass'
+    else:
+        m=masks(n,regions)
+        region_source='reviewed_polygons'
+    lab=p.srgb_lab(data); weight,edge=q.weights(data)
     codes,dist=q._dist(data,palette); pl=p.srgb_lab(np.array([p.rgb(palette[c]) for c in codes])); ix={c:i for i,c in enumerate(codes)}
     old=np.array([ix[c] for c in a.ravel()]); fixed=m['protect'].ravel(); fixed_colors=sorted(set(old[fixed]))
-    if len(fixed_colors)>budget: raise p.PatternError('protected codes exceed budget')
+    if len(fixed_colors)>budget: raise p.PatternError(f'protected region uses {len(fixed_colors)} different bead codes but finish budget={budget}; increase --finish-colors or refine the protection mask')
     # Warm source skin/background only; never impose a universal skin tone.
     # Exclude shadows, neutral highlights, and explicit feature protection.
     A=lab[...,1]; B=lab[...,2]; L=lab[...,0]
@@ -111,4 +106,6 @@ def optimize(data, rows, palette, regions, *, max_colors=None, rare_limit=5):
     def summary(v):
         r=np.asarray(codes)[v.reshape(n,n)].tolist(); c=Counter(v)
         return {**q.metrics(data,r,palette),**s.continuity(data,r,palette),'rare_colors':sum(x<=rare_limit for x in c.values()),'warm_skin_violations':int((skin & ~warm_ok[v]).sum())}
-    return result,{'before':summary(old),'after':summary(final),'protected_cells':int(fixed.sum()),'protected_changes':int(np.sum(final[fixed]!=old[fixed])),'warm_skin_cells':int(skin.sum()),'removed_codes':removed,'modified_cells':int(np.sum(final!=old)),'region_cells':{k:int(v.sum()) for k,v in m.items()}}
+    report={'before':summary(old),'after':summary(final),'protected_cells':int(fixed.sum()),'protected_changes':int(np.sum(final[fixed]!=old[fixed])),'warm_skin_cells':int(skin.sum()),'removed_codes':removed,'modified_cells':int(np.sum(final!=old)),'region_cells':{k:int(v.sum()) for k,v in m.items()}}
+    if category_labels is not None: report['source']='semantic_multiclass'
+    return result,report

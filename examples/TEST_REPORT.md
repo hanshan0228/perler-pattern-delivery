@@ -1,23 +1,12 @@
-# v2.9.1 compatibility regression report
+# v2.8.0 test and limitations report
 
-- GitHub code regression identified via user-supplied local PDF: MediaPipe 0.10.35 may yield `numpy_view()` with shape `(H,W,1)`; original code rejected the resulting `(6,H,W,1)` maps. The report describes successful local 9/9 semantic tests on Windows Python 3.14.3 after an equivalent squeeze-based fix. We independently reproduced and tested the shape issue using a mocked MediaPipe API, not by downloading or running the model in this environment.
-- The v2.9.1 fix accepts precisely `(H,W)` or `(H,W,1)` maps and rejects extraneous dimensions. `project()` remains strict about six square channels.
-- The screenshot confirms that a six-class overlay was produced, but the overlay has visible blocky class boundaries and doesn't by itself demonstrate bead-chart visual improvement. Always conduct human review.
+- Full local regression suite: `python -m unittest discover -s tests -v`, **59 passed in 70.217 s**, exit 0 (50 prior + 9 new). After a final backward-compatibility adjustment in the manual polygon report, the 6 region and 9 semantic-mask tests were rerun and passed.
+- v2.7 `scripts/perler_delivery.py`, `scripts/print_contract.py`, both approved example CSVs and the pinned 291-color MARD palette are **byte-identical** to v2.8. Existing master and chart rendering are unchanged.
+- Nine new tests: indexed IDs and RGB rejection; categorical majority sampling; strict stage alignment and missing-model errors; accessory/boundary protection; optimizer mutation contract; full `prepare` pipeline with class mask; two rehashed-mask tamper attacks blocked; explicit segmentation overlay review gate.
+- **Actual pretrained MediaPipe model inference was NOT tested**: environment lacked an installed supported runtime and the user-supplied multiclass model. The model adapter is opt-in and fail-closed, not a claim of verified model accuracy.
+- Real-photo demonstration uses an indexed mask rasterized from previously manually reviewed v2.7 polygons, **not ML inference**. At 87×87 and 39 colors, the optional `finish` candidate reduced 4-neighbor isolated cells from 329 to 296, while global mean ΔE76 increased from 7.5777 to 7.9028; protected cells 1,268/1,268 unchanged. It is **not better by all metrics**, and the mask boundaries require careful visual inspection. No new image is approved/frozen.
 
-# v2.9.0 test report
-
-- Full local suite: `python -m unittest discover -s tests -v` — 64 passed, 1 skipped, exit status 0 (74.292 s), 65 collected. The skipped test requires real MediaPipe model weights and runtime. Eight new focused tests passed with synthetic probability maps and a mocked MediaPipe interface; these do not validate neural model accuracy or compatibility with an actual runtime.
-- Model download failed in this environment (DNS/network restriction); the optional MediaPipe runtime was not installed. No neural inference or measured appearance improvement is claimed. Real deployment requires installing the optional requirements, obtaining the official file and completing the real-runtime smoke test and visual validation.
-- Regression verifies previous source-bound masks, approved matrices, chart rendering, PDF checks and palette constraints. The pinned reference palette, approved matrices, renderer and the seven candidate implementations are unchanged from the v2.8 local package. The GitHub approved CSV fixtures use LF rather than the local ZIP CRLF; normalized contents match the previous GitHub blob SHAs.
-- No new customer imagery, generated portraits, or third-party model weights distributed.
-
-# v2.8.0 test report
-
-- Six new auto-region/tone tests passed. All six prior region/printing tests passed separately. Full regression attempt timed out during the first-sheet end-to-end test after 19 tests reported OK; no full-pass claim is made.
-- Two local 87×87 portrait candidate sets were prepared and all seven variants verified by `verify_diagnostics`, including tone recomputation, region-plan binding and matrix/preview checks. These are unapproved candidates, not new approved PDF deliveries.
-- Pinned palette, approved 58×58 and 87×87 fixtures, and deterministic renderer are byte-identical to v2.7.
-- Same-palette tone refinement results (finish → tone): photo 30 colors, 9 cells changed, 6,666 fixed cells unchanged, smooth skin luma step error 2.7345 → 2.7286, chroma step error 2.3989 → 2.3958; cartoon 33 colors, 4 cells changed, 6,631 fixed cells unchanged, luma 0.8904 → 0.8800, chroma 1.1390 → 1.1254. Neither has a substantial visible quality improvement. Manual correction of automatic masks was necessary; no semantic accuracy guarantee.
-- No new personal pictures, masks, or matrices are distributed in this repository.
+---
 
 # v2.7.0 test report
 

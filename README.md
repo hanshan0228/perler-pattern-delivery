@@ -1,18 +1,6 @@
-# Perler Pattern Delivery Skill v2.9.1
+# Perler Pattern Delivery Skill v2.8.0
 
-## v2.9.1 — MediaPipe confidence-map shape compatibility
-
-Fixes a reported Windows / MediaPipe 0.10.35 real-inference failure: the confidence-map NumPy views may be `(H,W,1)` instead of `(H,W)`. The adapter now normalizes only that trailing singleton channel and rejects unexpected dimensions, with targeted API-mock regression tests. A user supplied evidence of a successful 9/9 local test run after a similar fix; neural weights/runtime are not available for independent inference in this environment. Visual quality still requires review.
-
-## v2.9 — Optional neural region proposals
-
-Optional local MediaPipe SelfieMulticlass adapter adds six-class confidence-aware region proposals with abstention, explicit model SHA-256, and the existing mandatory mask review. No weight downloads or identity recognition; the original v2.9 development had no real runtime test; a later user-reported Windows test ran successfully after the compatibility fix. This remains opt-in and is not proof of improved portraits. See [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md).
-
-## v2.8: Editable region proposals and local tone refinement
-
-Optional local face-box detection plus conservative color/connectivity proposals, offline mask editing, stage-bound reviewed plans, and same-palette skin tone refinement with hard guards. No neural semantic segmentation or automatic approval. See [AUTO_REGIONS.md](references/AUTO_REGIONS.md).
-
-## v2.7: Reviewed regions and readable print output
+## v2.8: Reviewed regions and readable print output
 
 Provide reviewed normalized polygons via `--regions` to add an optional `finish` candidate; optionally lower its budget with `--finish-colors`. Skin constraints apply only to source-supported warm cells, with protected features locked. This is not automatic segmentation. New first sheets and approved deliveries use contrast-maximizing text and color/monochrome A4 board pages, verified by rerendering. Existing master data and legacy verification are preserved. See [REGION_PRINT.md](references/REGION_PRINT.md).
 
@@ -71,3 +59,10 @@ For Agent Skills use `SKILL.md`. Full Chinese usage instructions are in [README_
 ## Source and licensing
 
 The color dataset and image matching approach are based on the project linked in [SOURCES.md](references/SOURCES.md); see the attribution details there. This repository includes an MIT license.
+
+
+## v2.8: optional semantic segmentation with explicit visual inspection
+
+A real model-assisted path now accepts a **local** MediaPipe SelfieMulticlass model (`--mediapipe-model`) or a stage-aligned indexed category PNG (`--segmentation-mask`). The model is **not bundled**, and no automatic downloads or customer photo uploads occur. Category IDs: 0 background; 1 hair; 2 body skin; 3 face skin; 4 clothes; 5 accessories.
+
+Every new segmentation candidate creates `segmentation_overlay.png` for review. The `finish` variant cannot be selected without explicit `segmentation_overlay_checked:true`. For details and limitations see [semantic segmentation contract](references/SEMANTIC_SEGMENTATION.md). Only source-mask import, classification label processing, and optimizer contracts are regression-tested in the standard environment; actual MediaPipe model inference requires the optional runtime and a matching local model file.
