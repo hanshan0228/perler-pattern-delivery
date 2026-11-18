@@ -17,10 +17,6 @@
 
 The offline cartoon filters and pixel-grid samplers in this repository are independently implemented using Pillow/NumPy and optionally OpenCV.
 
+## v2.9 optional neural backend
 
-## v2.8 semantic segmentation references
-
-- MediaPipe Image Segmenter and official SelfieMulticlass six categories: https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter
-- MediaPipe Python Image Segmenter setup: https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter?tab=Python
-
-No MediaPipe model weights or borrowed segmentation repository source are included in this Skill. Optional runtime API is used only when explicitly supplied a local model.
+- Google MediaPipe SelfieMulticlass: https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter ; official model card states Apache 2.0 and cautions against pixel-perfect-mask use: https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf ; upstream SDK https://github.com/google-ai-edge/mediapipe . No weights or upstream source bundled. Optional runtime not verified in this environment. See SEMANTIC_REGIONS.md.

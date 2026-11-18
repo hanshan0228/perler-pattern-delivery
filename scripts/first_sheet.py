@@ -16,9 +16,8 @@ from PIL import Image, ImageDraw, ImageOps
 import perler_delivery as p
 from cartoon_pipeline import open_rgb
 
-SCHEMA = 'first-sheet-v5'
-PREVIOUS_SCHEMA = 'first-sheet-v4'
-OLDER_SCHEMA = 'first-sheet-v3'
+SCHEMA = 'first-sheet-v4'
+PREVIOUS_SCHEMA = 'first-sheet-v3'
 LEGACY_SCHEMA = 'first-sheet-v2'
 PHOTO_CHECKS = ('recognizable_subject', 'realistic_not_cartoon', 'framing_and_silhouette',
                 'key_features_readable', 'clean_regions_and_no_artifacts')
@@ -28,7 +27,10 @@ def checks_for(mode):
     if mode=='cartoon': return CHECKS
     raise p.PatternError('invalid portrait mode')
 VARIANTS = ('detail', 'flat', 'portrait', 'regional', 'coherent')
-ALL_VARIANTS = VARIANTS + ('finish',)
+ALL_VARIANTS = VARIANTS + ('finish', 'tone')
+
+def active_variants(meta):
+    return VARIANTS + (('finish',) if 'region_spec' in meta else ()) + (('tone',) if 'region_plan' in meta else ())
 CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
           'key_features_readable', 'clean_regions_and_no_artifacts')
 
@@ -79,6 +81,8 @@ def make_comparison(root, original, stage, variants, palette, mode="cartoon"):
     images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS]]
     if 'finish' in variants:
         images.append(p.semantic_image(variants['finish'],palette)); labels.append('Region-aware finish')
+    if 'tone' in variants:
+        images.append(p.semantic_image(variants['tone'],palette)); labels.append('Local skin tone refinement')
     images.append(benchmark)
     labels.append('Approved style benchmark (87)')
     canvas=Image.new('RGB',(1830,70+510*((len(images)+3)//4)),'#f7f3ef');d=ImageDraw.Draw(canvas)
@@ -119,49 +123,26 @@ def prepare(args):
     reference=samples(stage,args.grid,'flat')
     variants={}; metadata={}; scores={}
     region_arg=getattr(args,'regions',None)
-    imported_mask=getattr(args,'segmentation_mask',None)
-    mp_model=getattr(args,'mediapipe_model',None)
-    require(sum(bool(x) for x in (region_arg,imported_mask,mp_model))<=1,
-            'Choose exactly one optional region source: --regions, --segmentation-mask, --mediapipe-model')
-    region_spec=load(Path(region_arg)) if region_arg else None
-    semantic_labels=None; segmentation_info=None
-    if region_spec is not None or imported_mask or mp_model:
-        import region_finish
+    plan_arg=getattr(args,'region_plan',None)
+    require(not (plan_arg and region_arg),'choose either reviewed region plan or manual polygons')
+    region_plan=None
+    if plan_arg:
+        import auto_regions
+        region_plan=auto_regions.load_plan(plan_arg,stage,args.grid)
+    region_spec=region_plan['regions'] if region_plan else (load(Path(region_arg)) if region_arg else None)
     if region_spec is not None:
-        require(isinstance(region_spec,list) and bool(region_spec),'regions must be a nonempty polygon list')
+        import region_finish
+        require(isinstance(region_spec,list) and bool(region_spec),'regions must be a nonempty region list')
         region_finish.masks(args.grid,region_spec)
-    if imported_mask or mp_model:
-        import semantic_masks as sm
-        if imported_mask:
-            mask_path=Path(imported_mask)
-            require(mask_path.is_file(),'indexed segmentation PNG missing')
-            stage_classes=sm.load_indexed_png(mask_path,(stage.height,stage.width))
-            origin='imported_indexed_mask'; input_hash=p.sha_file(mask_path)
-        else:
-            model=Path(mp_model)
-            stage_classes=sm.infer_with_mediapipe(stage,model)
-            origin='mediapipe_selfie_multiclass'; input_hash=p.sha_file(model)
-        semantic_labels=sm.to_grid(stage_classes,args.grid)
-        class_counts=sm.check_coverage(semantic_labels)
-        Image.fromarray(stage_classes,'L').save(root/'segmentation_stage.png')
-        Image.fromarray(semantic_labels,'L').save(root/'segmentation_cells.png')
-        sm.overlay(stage,stage_classes).save(root/'segmentation_overlay.png')
-        segmentation_info={
-            'origin':origin,'input_sha256':input_hash,'class_counts':class_counts,
-            'stage_mask_sha256':p.sha_file(root/'segmentation_stage.png'),
-            'cells_sha256':p.sha_file(root/'segmentation_cells.png'),
-            'overlay_sha256':p.sha_file(root/'segmentation_overlay.png'),
-            'protected_boundary_cells':int(sm.masks_from_classes(semantic_labels,reference)['protect'].sum()),
-            'category_taxonomy':'MediaPipe SelfieMulticlass indices 0..5',
-            'model_inference_executed':origin=='mediapipe_selfie_multiclass',
-            'requires_visual_mask_review':True,
-        }
     finish_colors=getattr(args,'finish_colors',None) or args.colors
     require(1<=finish_colors<=args.colors,'finish-colors must not exceed overall budget')
-    active=ALL_VARIANTS if (region_spec is not None or semantic_labels is not None) else VARIANTS
+    active=VARIANTS + (('finish',) if region_spec is not None else ()) + (('tone',) if region_plan else ())
     for v in active:
-        if v=='finish':
-            rows,finish_report=region_finish.optimize(reference,variants['coherent'],palette,region_spec,max_colors=finish_colors,category_labels=semantic_labels)
+        if v=='tone':
+            import tone_quality
+            rows,tone_report=tone_quality.refine(reference,variants['finish'],palette,region_spec)
+        elif v=='finish':
+            rows,finish_report=region_finish.optimize(reference,variants['coherent'],palette,region_spec,max_colors=finish_colors)
         elif v=='regional':
             rows,regional_report=spatial.refine_palette(reference,variants['portrait'],palette,regions)
         elif v=='coherent':
@@ -194,47 +175,23 @@ def prepare(args):
               'quality_metric_reference':'all variants versus same area-average stage; weighted Delta E76, not likeness score'}
     if region_spec is not None:
         manifest.update(region_spec=region_spec,finish_report=finish_report,finish_colors=finish_colors)
-    if segmentation_info is not None:
-        manifest.update(segmentation=segmentation_info,finish_report=finish_report,finish_colors=finish_colors)
+    if region_plan is not None:
+        manifest.update(region_plan=region_plan,tone_report=tone_report)
     dump(root/'prepare.json',manifest)
-    review_template={'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
-         'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in checks},'notes':''}
-    if segmentation_info is not None:
-        review_template['segmentation_overlay_checked']=False
-    dump(root/'visual_review_TEMPLATE.json',review_template)
+    dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
+         'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in checks},'notes':''})
     print('PREPARED: inspect review_comparison.png and chosen candidate at full resolution; then record actual visual review. No master created.')
 
 
 def verified_variant(root, v):
     require(v in ALL_VARIANTS,'unknown variant')
     meta=load(root/'prepare.json')
-    require(meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA,OLDER_SCHEMA,LEGACY_SCHEMA) and meta['status']=='UNAPPROVED','invalid prepare manifest')
+    require(meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA,LEGACY_SCHEMA) and meta['status']=='UNAPPROVED','invalid prepare manifest')
     mode=meta['mode']; checks_for(mode)
     require(meta['stage_file']==('cartoon_stage.png' if mode=='cartoon' else 'photo_stage.png'),'invalid stage file')
     require(p.sha_file(root/'palette.json')==p.sha_file(p.PALETTE),'candidate palette differs from pinned MARD reference')
     for file,key in [('palette.json','palette_sha256'),(meta['stage_file'],'stage_sha256'),('review_comparison.png','comparison_sha256')]:
         require(p.sha_file(root/file)==meta[key],f'{file} changed')
-    if 'segmentation' in meta:
-        import semantic_masks as sm
-        seg=meta['segmentation']
-        require(meta['schema']==SCHEMA,'semantic mask requires first-sheet-v5 manifest')
-        for fn,field in (('segmentation_stage.png','stage_mask_sha256'),
-                         ('segmentation_cells.png','cells_sha256'),
-                         ('segmentation_overlay.png','overlay_sha256')):
-            require(p.sha_file(root/fn)==seg[field],f'segmentation {fn} file changed')
-        with Image.open(root/'segmentation_stage.png') as img:
-            sm_stage=sm.validate(np.asarray(img),(img.height,img.width))
-        with Image.open(root/meta['stage_file']) as img:
-            stage=img.convert('RGB')
-        require(sm_stage.shape==(stage.height,stage.width),'segmentation stage dimensions mismatch')
-        with Image.open(root/'segmentation_cells.png') as img:
-            sm_cells=sm.validate(np.asarray(img),(meta['grid'],meta['grid']))
-        require(np.array_equal(sm.to_grid(sm_stage,meta['grid']),sm_cells),'segmentation grid labels not derived from stage')
-        require(sm.check_coverage(sm_cells)==seg['class_counts'],'segmentation class counts changed')
-        p.verify_png(root/'segmentation_overlay.png',sm.overlay(stage,sm_stage))
-        import portrait_quality as quality
-        reference=samples(stage,meta['grid'],'flat')
-        require(seg['protected_boundary_cells']==int(sm.masks_from_classes(sm_cells,reference)['protect'].sum()),'segmentation protection metric changed')
     target=root/v; info=meta['variants'][v]
     require(set(info['files'])=={'candidate_matrix.csv','candidate_preview.png','semantic_pixels.png'},'missing variant file')
     for fn,sha in info['files'].items():
@@ -247,13 +204,18 @@ def verified_variant(root, v):
     with Image.open(target/'semantic_pixels.png') as pixels:
         require(pixels.mode=='RGBA' and pixels.size==(w,h) and pixels.tobytes()==p.semantic_image(rows,palette).tobytes(),'semantic pixels mismatch')
     p.verify_png(target/'candidate_preview.png',p.preview_image(rows,palette))
-    if meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA,OLDER_SCHEMA):
+    if meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA):
         import portrait_quality as quality
         with Image.open(root/meta['stage_file']) as stage:
-            reference=samples(stage.convert('RGB'),meta['grid'],'flat')
+            stage=stage.convert('RGB')
+            reference=samples(stage,meta['grid'],'flat')
+            if 'region_plan' in meta:
+                import auto_regions
+                plan=auto_regions.verify_plan(meta['region_plan'],stage,meta['grid'])
+                require(plan['regions']==meta['region_spec'],'reviewed plan differs from used regions')
         reported=meta['quality_metrics'][v]
         recomputed=quality.metrics(reference,rows,palette,meta['focus_regions'])
-        if meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA):
+        if meta['schema']==SCHEMA:
             import spatial_quality as spatial
             recomputed.update(spatial.continuity(reference,rows,palette))
             if v=='regional':
@@ -263,13 +225,13 @@ def verified_variant(root, v):
             if v=='finish':
                 import region_finish
                 _,baseline,_,_,_=verified_variant(root,'coherent')
-                if 'segmentation' in meta:
-                    with Image.open(root/'segmentation_cells.png') as img:
-                        label_map=np.asarray(img,dtype=np.uint8)
-                    expected,report=region_finish.optimize(reference,baseline,palette,None,max_colors=meta['finish_colors'],category_labels=label_map)
-                else:
-                    expected,report=region_finish.optimize(reference,baseline,palette,meta['region_spec'],max_colors=meta['finish_colors'])
+                expected,report=region_finish.optimize(reference,baseline,palette,meta['region_spec'],max_colors=meta['finish_colors'])
                 require(rows==expected and meta['finish_report']==report,'region finish mismatch')
+            if v=='tone':
+                import tone_quality
+                _,baseline,_,_,_=verified_variant(root,'finish')
+                expected,report=tone_quality.refine(reference,baseline,palette,meta['region_spec'])
+                require(rows==expected and meta['tone_report']==report,'tone refinement mismatch')
             if v=='coherent':
                 _,baseline,_,_,_=verified_variant(root,'portrait')
                 expected,report=spatial.regularize(reference,baseline,palette,meta['focus_regions'])
@@ -281,16 +243,13 @@ def verified_variant(root, v):
 def review_ok(review,meta,v):
     require(review.get('variant')==v and review.get('codes_sha256')==meta['variants'][v]['codes_sha256'] and review.get('comparison_sha256')==meta['comparison_sha256'],'review not bound to current candidate/comparison')
     require(all(review.get('checks',{}).get(k) is True for k in checks_for(meta['mode'])),'visual review incomplete or failed; correct the illustration or regenerate candidate before showing the chart')
-    if 'segmentation' in meta:
-        require(review.get('segmentation_overlay_checked') is True,
-                'segmentation overlay needs explicit visual inspection: mask is only a model proposal, not verified ground truth')
     require(isinstance(review.get('notes'),str) and len(review['notes'].strip())>=12,'record concrete visible features and comparison; no boilerplate approvals')
 
 
 def verify_diagnostics(root, meta):
-    if meta['schema'] not in (SCHEMA,PREVIOUS_SCHEMA): return
+    if meta['schema']!=SCHEMA: return
     import spatial_quality as spatial
-    active=ALL_VARIANTS if ('region_spec' in meta or 'segmentation' in meta) else VARIANTS
+    active=active_variants(meta)
     require(set(meta['variants'])==set(active) and set(meta['quality_metrics'])==set(active),'incomplete candidate set')
     for variant in active:
         verified_variant(root,variant)
@@ -327,7 +286,7 @@ def select(args):
 def verify(args):
     root,out=Path(args.prepared),Path(args.sheet)
     info=load(out/'candidate_validation.json')
-    require(info['schema'] in (SCHEMA,PREVIOUS_SCHEMA,OLDER_SCHEMA,LEGACY_SCHEMA) and info['status']=='UNAPPROVED','invalid candidate status')
+    require(info['schema'] in (SCHEMA,PREVIOUS_SCHEMA,LEGACY_SCHEMA) and info['status']=='UNAPPROVED','invalid candidate status')
     v=info['variant'];meta,rows,palette,counts,empty=verified_variant(root,v)
     require(info.get('mode')==meta['mode'],'mode mismatch')
     verify_diagnostics(root,meta)
@@ -358,7 +317,7 @@ def verify(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='cmd',required=True)
-    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.add_argument('--finish-colors',type=int,help='Optional lower color budget for regional finish only');a.add_argument('--regions',help='Reviewed normalized polygon JSON: skin, hair, cloth, background, protect');a.add_argument('--segmentation-mask',help='MediaPipe SelfieMulticlass indexed 0..5 PNG, exact padded-stage dimensions');a.add_argument('--mediapipe-model',help='Optional local MediaPipe SelfieMulticlass .tflite/.task file; requires mediapipe, no automatic downloads');a.set_defaults(func=prepare)
+    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.add_argument('--finish-colors',type=int,help='Optional lower color budget for regional finish only');a.add_argument('--regions',help='Reviewed normalized polygon JSON: skin, hair, cloth, background, protect');a.add_argument('--region-plan',help='Source-bound reviewed mask plan from auto_regions.py accept');a.set_defaults(func=prepare)
     a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=ALL_VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
     a=sub.add_parser('verify');a.add_argument('--prepared',required=True);a.add_argument('--sheet',required=True);a.set_defaults(func=verify)
     args=parser.parse_args()

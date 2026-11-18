@@ -1,6 +1,18 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.8.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.9.1
 
-## v2.8：区域配色与打印可读性
+## v2.9.1 — 修复 MediaPipe 真实推理维度兼容性
+
+用户在 Windows / Python 3.14.3 / MediaPipe 0.10.35 运行真实模型时发现，六类置信度图可能返回 `(H,W,1)`，旧代码错误地组合成四维数组。现在严格兼容 `(H,W)` 与 `(H,W,1)` 并拒绝其他异常形状；保留人工审查、冻结 MASTER 和逐格校验规则。用户报告本地 9 项测试通过并输出区域叠加图；本项目环境尚未独立运行真实模型权重。
+
+## v2.9 — 可选神经网络区域建议
+
+新增可选的 Google MediaPipe 六类语义分割模型入口，带置信度弃权、明确模型文件 SHA-256、蒙版校对和来源记录。权重不内置、不自动下载；v2.9 原开发环境未执行真实推理；之后已有用户在 Windows 实测运行成功，但画质提升仍待验证。详见 [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md)。
+
+## v2.8：区域蒙版建议与局部色阶精修
+
+可选本地人脸定位、颜色及连通区域启发式建议、离线逐格蒙版编辑、绑定底图的人工审核计划，并增加同色卡的局部肤色色阶候选。不是全自动语义分割，不自动批准画质。详见 [AUTO_REGIONS.md](references/AUTO_REGIONS.md)。
+
+## v2.7：区域配色与打印可读性
 
 支持经过人工检查的归一化多边形 `--regions`（皮肤/头发/衣服/背景/锁定细节），新增 `finish` 候选和可选 `--finish-colors` 采购预算。不是自动人脸分割，不能保证审美提升。既有候选保留。新首稿及 MASTER 派生交付自动生成高对比色号和 A4 彩色、黑白分板，逐页重渲染验证。已冻结矩阵不变。详见 [REGION_PRINT.md](references/REGION_PRINT.md)。
 
@@ -87,14 +99,3 @@ python scripts/perler_delivery.py deliver --master ./project-v1/master --out ./p
 - `examples/` 内附你已经确认过的 58×58 和 87×87 色号矩阵，供首次跑通与回归核对。
 
 源代码、算法参考与正式规范见 `references/SOURCES.md`。
-
-
-## v2.8 新增：可审核的六类语义分割
-
-- `--mediapipe-model`：使用本地已下载的 MediaPipe SelfieMulticlass 模型执行分类；需额外安装 `mediapipe`，不会自动下载模型。
-- `--segmentation-mask`：导入已与方形预处理底图对齐的真实类别掩码，类别为 0 背景 / 1 头发 / 2 身体皮肤 / 3 面部皮肤 / 4 衣服 / 5 饰品。
-- 产生 `segmentation_stage.png`、`segmentation_cells.png`、`segmentation_overlay.png`，并为所有文件记录 SHA-256。保护区域边界与高对比的五官。
-- **必须目视审核分割叠加层**，在审核 JSON 将 `segmentation_overlay_checked` 设为 true 才可选中候选。`finish` 不承诺画质高于旧版。
-- 本 Skill 不会打包商业授权不明确的模型权重；普通用户仍可使用此前的手动区域流程。
-
-[详细运行与审核步骤](references/SEMANTIC_SEGMENTATION.md)。

@@ -4,10 +4,14 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.8.0"
+  version: "2.9.1"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
+
+## v2.9.1 MediaPipe 真实运行兼容修复
+
+媒体分割的单类置信度数组兼容 `(H,W)` 及 `(H,W,1)`，只移除最后一个单通道维度，其他异常形状直接报错。Windows Python 3.14.3 / MediaPipe 0.10.35 的真实运行已由用户本地报告验证，但在当前执行环境未独立复现模型推理；该报告不等于拼豆画质验收。所有神经分割蒙版仍必须人工检查，通过 `accept` 后才可影响待确认候选，绝不更改已冻结 MASTER。
 
 ## P0 最高优先级：最终施工图只能由程序绘制
 
@@ -18,6 +22,20 @@ metadata:
 - `verify` 必须从矩阵重新渲染并比较真实 PNG 像素及同环境确定性 PDF，不仅验证 PNG 文件的哈希。所有坐标从 1 连续编号到实际宽高，每个格子只能引用真实色卡。禁止用 OCR 或手工补几个乱码来挽救模型生成的假图纸。
 - 提交新肖像时只使用 `UNAPPROVED`，取得用户明确认可后才 `freeze`。用户一次要卡通和写实，应分别完成两套独立候选与校验，不能共享或虚构矩阵。交付链接必须指向本次已验收文件。
 - 旧版交付包没有重渲染校验，需从原有 MASTER 重新 `deliver` 到新目录；禁止更改 MASTER 或仅修改旧校验文件来通过。重渲染验收需使用相同代码、字体、Pillow 与 ReportLab 版本。环境不同则用可信 MASTER 在新环境重新导出。
+
+## v2.9 可选真实语义分割模型入口（须先核验模型与实际蒙版）
+
+- 优先考虑本地 MediaPipe SelfieMulticlass 六类模型来建议区域，但仅在运行环境已安装模型依赖、用户具备使用授权且本地模型文件真实存在时使用。安装与命令见 [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md)。此版本的真实模型推理尚未验证，不能保证使用该路径就比已有候选更好。
+- 使用 `auto_regions.py propose --stage ... --grid 87 --model ... --model-sha256 ... --out ...`。模型接收实际方形底图；六类置信度按格面积投影，置信度、类别相差和覆盖率不足时保留 unknown；饰品标记 protect，面部强边缘的保护仍是启发式，不能冒充五官语义识别。画风与人物较复杂时必须检查并修正。
+- 神经网络输出只能生成 UNREVIEWED 区域建议，仍必须用编辑器校对、记录实际审核并 `accept`，再运行原有 `first_sheet.py prepare --region-plan ...`。不得把模型输出直接当作可施工色号、不得自动批准，也不得跳过最终图纸程序验证。没有真实模型时可显式选旧启发式或手工路径；请求神经模型失败不得静默回退。
+- `unknown` 不代表锁定，重要五官必须标为 `protect`。模型及图片不默认联网传输，模型权重不包含在 Skill 内。所有冻结 MASTER 仍绝不修改。
+
+## v2.8 区域蒙版建议与局部肤色色阶精修（传统备选）
+
+- 用 `scripts/auto_regions.py propose --stage ... --grid ... --out ...` 生成本次底图的区域建议（可选 OpenCV 人脸位置检测 + 色彩/连通区域启发式；不是神经网络语义分割）。没有可靠单人定位时，使用 `--face X0 Y0 X1 Y1` 或 `--manual`，不猜测人脸。冷色照明或非自然肤色允许直接保留旧候选。
+- 必须实际检查 `overlay.png`，使用离线 `mask_editor.html` 修正皮肤、头发、衣服、背景和保护区，无法准确归类的地方保留 unknown。unknown 仅表示不施加该区域的专门色彩约束，并非整个格子锁定。眼睛、嘴角、耳饰、精细肩带等需设 protect。只读取本次底图，不复用旧照片蒙版。
+- 通过 `auto_regions.py accept` 导入**校对后的**原尺寸无抗锯齿标签 PNG，记录具体审核观察，产生绑定方形底图像素摘要、格数的 `reviewed_plan.json`。这仅表示区域审核，不表示顾客批准。`prepare --region-plan PATH` 启用 `finish` 和第七个 `tone` 候选，和 `--regions` 互斥。
+- `tone` 保持 `finish` 实际使用的全部色号，保护区域外、强边缘、皮肤边界与关键格；仅在已确认皮肤内部以同色卡邻格候选做保守精修。局部亮度/色度跳变误差不得增加，不增孤立格与皮肤区域色阶断裂，不突破全局与局部色差上限；否则返回与 finish 完全相同的矩阵。验证阶段重新计算该候选和诊断。任何指标都不代表审美或人脸相似度，仍须逐张观察。详见 [区域蒙版](references/AUTO_REGIONS.md)。
 
 ## v2.7 强制画质与施工可读性检查
 
@@ -32,36 +50,11 @@ python scripts/first_sheet.py prepare --mode photo --image original.jpg --grid 8
 - 新首稿 `select` 必须同时生成彩色及黑白 A4 分板 PNG/PDF，`verify` 从矩阵重新渲染每板并检查 PDF。87×87 默认九页/套；A2 总图只作概览。黑白文字按参考色卡相对亮度选择更高对比度，普通格内文字目标至少 4.5:1（数字色彩理论值，非印刷实测），A4 字体放大并适配实际字符宽度。
 - 已冻结 MASTER 不做地区配色或低频色清理。新版 `deliver` 仅改变排版文字可读性；旧 v3 验证仍采用原渲染方式。详见 [区域与印刷规范](references/REGION_PRINT.md)。
 
-
-## v2.8：真正的语义区域分割（可选，不得伪装为已完成）
-
-人像写实版本来需要区分皮肤、头发、衣服、背景和饰品。**没有分割模型或真实类别索引掩码时，不能声称已自动识别这些区域。** 默认继续使用既有五候选和人工区域工作流，不自动修改任何图纸。
-
-**优先使用用户明确提供并已授权的 MediaPipe SelfieMulticlass `.tflite/.task` 模型**，需要执行环境自行安装 `mediapipe`，不自动下载模型或上传人像：
-
-```bash
-python scripts/first_sheet.py prepare \
-  --image portrait.png --mode photo --grid 87 --colors 39 --finish-colors 39 \
-  --mediapipe-model /path/to/selfie_multiclass_256x256.tflite \
-  --out review_semantic_v1
-```
-
-也可以导入其他程序生成的、**与 padded stage 完全同尺寸的灰度/索引 PNG**；像素值必须为 0=背景、1=头发、2=身体皮肤、3=脸部皮肤、4=衣服、5=饰品。见 [语义分割说明](references/SEMANTIC_SEGMENTATION.md)。
-
-```bash
-python scripts/first_sheet.py prepare \
-  --image portrait.png --mode photo --grid 87 --colors 39 \
-  --segmentation-mask /path/to/stage_aligned_indexed_mask.png \
-  --out review_semantic_v1
-```
-
-必须在 `segmentation_overlay.png` 上实际检查脸部、头发、衣服和饰品边界。`visual_review_TEMPLATE.json` 新增 `segmentation_overlay_checked:false`，没审核就不得 `select`。`finish` 是第六个**未经批准的**候选；可能比 `coherent` 更差，不允许默认替换旧图。已批准 MASTER 与 v2.7 施工图渲染逻辑保持不变。只有导入掩码时，元数据必须显示 `model_inference_executed:false`，不可伪称本地运行了神经网络。
-
 ## P0 默认入口：卡通风格拼豆图纸，不是卡通插画
 
 **调用者不需要另写长提示词。** 听到“卡通版”“卡通拼豆图纸”“做成拼豆图纸”“再给我一个成品”且上下文是制作拼豆图纸，默认最终产物为顾客单页**有色号的施工图**。新肖像默认精致平涂卡通；用户明确要求写实才用 photo 模式。只有明确要求“卡通底图”“只要效果预览/实物模拟”才仅交付相应图。用户要改已确认图纸排版则优先使用 MASTER，不重新卡通化。
 
-### 新肖像的必经生产线（v2.7，首次使用先读这里）
+### 新肖像的必经生产线（v2.9，首次使用先读这里）
 
 1. 使用实际上传的原照片作为图像模型编辑参考。按 [首稿规范](references/FIRST_SHEET.md) 生成**无网格、无色号、无标题**的精致平涂卡通底图。必须用真正的图像生成/编辑模型或用户提供的卡通原稿；离线滤镜只能是用户明确选择的实验模式。没有图像工具和真实底图就说明缺口，不能偷偷改用滤镜，也不能伪造图纸。
 2. 运行首稿生产线（默认 87×87、最多 33 色；用户指定值优先）：
@@ -71,7 +64,7 @@ python scripts/first_sheet.py prepare --image original.jpg --cartoon-image carto
 ```
 
 3. **自己先检查** `review_comparison.png` 和候选大图。比较全部候选、参考原照片和已有基准。若造型不对、五官丢失、花饰/关键轮廓被切掉或存在明显噪声，重新生成卡通底图/候选并比较；最多两轮修正，不得无限重试。在仍不合格时明确说明失败，不把差稿当合格首稿。禁止仅依据像素 hash 宣称画质合格。
-4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail`、`flat`、`portrait`、`regional` 、`coherent` 或已生成的 `finish`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
+4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail`、`flat`、`portrait`、`regional` 、`coherent` 、已生成的 `finish` 或 `tone`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
 
 ```bash
 python scripts/first_sheet.py select --prepared ./review_v1 --variant flat --review ./review.json --name '卡通定制肖像' --out ./first_sheet

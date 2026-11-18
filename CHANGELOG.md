@@ -1,11 +1,21 @@
-# v2.8.0 — Optional verified semantic-region input
+## v2.9.1 — MediaPipe 0.10.35 confidence-mask dimension fix
 
-- Added `semantic_masks.py`: six-class MediaPipe SelfieMulticlass local model adapter and strict indexed-mask PNG import.
-- Added grid-level categorical majority sampling (central-3/5), full-size overlay and category inventory.
-- Protected automatically detected class boundaries, high-contrast face features, and accessory-class pixels; region optimization never touches a frozen MASTER.
-- Added explicit segmentation-overlay review gate, source/mask hashes, and full regenerated-mask audit.
-- No model weights bundled or automatically downloaded, and no claim of automatic inference when importing external masks.
-- New optional `finish` candidate is never auto-selected. No aesthetic improvement guarantees.
+- Fix actual Windows/Python 3.14.3/MediaPipe 0.10.35 shape regression reported by a user: `Image.numpy_view()` confidence mask can be `(H, W, 1)` instead of `(H, W)`.
+- Normalize only a trailing singleton channel, preserve copied float32 data before closing the MediaPipe segmenter, reject unexpected dimensions; retain the same class order and stage-bound review gate.
+- New synthetic API-compatibility regression tests cover both 2D and singleton-channel 3D returns. The local runtime cannot run the real model; a user-supplied PDF reports 9/9 local semantic tests passing after an equivalent squeeze fix. No claim of improved visual quality or independent real-run replication.
+- Unchanged MARD color palette, approved matrices, production chart renderer, and PDF validation.
+
+## v2.9.0 — Optional local neural segmentation adapter (runtime unverified)
+
+- Explicit MediaPipe SelfieMulticlass local model entrypoint, SHA-256/TFLite header checks, six-class confidence projection, ambiguity abstention and accessories/face-edge protection.
+- Keep stage-bound human review and seven candidates. No silent fallback on requested inference failure; legacy paths and production rendering unchanged.
+- Eight focused tests passed with synthetic probability maps and mocked runtime; optional real-model smoke test skipped (weights and runtime unavailable). No claim of empirically improved segmentation or appearance.
+
+## v2.8.0 — Editable region proposals and conservative local tone refinement
+
+- Optional OpenCV face localization; deterministic color/connectivity suggestions with unknown regions. Offline grid-aligned mask editor, exact PNG label import, and reviewed plan bound to stage pixels and grid size.
+- Seventh `tone` candidate inside reviewed skin regions, same actual palette as `finish`, protected features locked, non-increasing local luminance/chroma step errors and isolation guards. No-op on regression.
+- Six focused regression tests for proposals, exact mask round-trip, source binding, locks, recomputation and tampering. Existing renderer, reference palette and approved fixtures untouched.
 
 ## v2.7.0 — Reviewed region color refinement and readable boards
 
