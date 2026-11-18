@@ -1,16 +1,16 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.5.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.6.0
 
-## v2.5 人像视觉优化
+## v2.6 人像视觉优化
 
-新增 `portrait` 候选，直接在真实 MARD 色卡内进行预算约束选色，并支持手工指定重点区域 `--focus X0 Y0 X1 Y1`。保留 `detail` 与 `flat`，只在低反差、非重点区域谨慎处理孤立格。质量报告是辅助诊断，不是审美认证。旧 MASTER 与生产渲染代码保持不变。
+保留 `portrait` 候选，直接在真实 MARD 色卡内进行预算约束选色，并支持手工指定重点区域 `--focus X0 Y0 X1 Y1`。保留 `detail` 与 `flat`，只在低反差、非重点区域谨慎处理孤立格。质量报告是辅助诊断，不是审美认证。新增 `regional`（相同实际色数的区域加权换色）及 `coherent`（相同色号组合，受源图边缘及色差约束的连续性精修）。五候选多指标比较，仍需实际视觉审核。旧 MASTER 与生产渲染代码保持不变。
 
 ## v2.4 强制施工图验收（保留）
 
 禁止 AI 直接绘制带坐标、色号、图例的最终图纸。卡通和写实均由 Python 根据真实矩阵生成。写实首稿入口：`python scripts/first_sheet.py prepare --mode photo --image portrait.jpg --grid 87 --colors 40 --out review`；卡通需真实卡通底图。审核、select、verify 后才可交付单页 PNG/PDF。校验会重新渲染比对实际图纸，而非仅验证文件哈希。已确认 MASTER 保持不变，旧交付包从原 MASTER 导出到新目录即可。重渲染校验须使用相同字体和依赖版本。
 
-## 默认首稿流程（v2.5）
+## 默认首稿流程（v2.6）
 
-新照片默认输出卡通风格、有格内 MARD 色号的单页施工图；不再默认走离线滤镜。先用图像模型制作真实卡通底图，再用 `scripts/first_sheet.py prepare` 生成三个候选，实际检查后 `select`，最后 `verify`。详见 [首稿规范](references/FIRST_SHEET.md) 与 [SKILL.md](SKILL.md)。待确认图纸不等于已冻结 MASTER。
+新照片默认输出卡通风格、有格内 MARD 色号的单页施工图；不再默认走离线滤镜。先用图像模型制作真实卡通底图，再用 `scripts/first_sheet.py prepare` 生成五个候选，实际检查后 `select`，最后 `verify`。详见 [首稿规范](references/FIRST_SHEET.md) 与 [SKILL.md](SKILL.md)。待确认图纸不等于已冻结 MASTER。
 
 
 这是实际可运行的 Agent Skill，而不是提示词合集。

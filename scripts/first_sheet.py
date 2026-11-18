@@ -16,7 +16,8 @@ from PIL import Image, ImageDraw, ImageOps
 import perler_delivery as p
 from cartoon_pipeline import open_rgb
 
-SCHEMA = 'first-sheet-v3'
+SCHEMA = 'first-sheet-v4'
+PREVIOUS_SCHEMA = 'first-sheet-v3'
 LEGACY_SCHEMA = 'first-sheet-v2'
 PHOTO_CHECKS = ('recognizable_subject', 'realistic_not_cartoon', 'framing_and_silhouette',
                 'key_features_readable', 'clean_regions_and_no_artifacts')
@@ -25,7 +26,7 @@ def checks_for(mode):
     if mode=='photo': return PHOTO_CHECKS
     if mode=='cartoon': return CHECKS
     raise p.PatternError('invalid portrait mode')
-VARIANTS = ('detail', 'flat', 'portrait')
+VARIANTS = ('detail', 'flat', 'portrait', 'regional', 'coherent')
 CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
           'key_features_readable', 'clean_regions_and_no_artifacts')
 
@@ -70,16 +71,15 @@ def map_candidate(stage, n, colors, palette, variant):
 
 
 def make_comparison(root, original, stage, variants, palette, mode="cartoon"):
-    labels=['Original reference','AI cartoon base','Detail - central median','Flat - area mean','Portrait - MARD constrained','Approved style benchmark (87)']
+    labels=['Original reference','AI cartoon base' if mode=='cartoon' else 'Photo source',
+            'Detail - central median','Flat - area mean','Portrait - MARD constrained','Regional - palette swaps','Coherent - spatial refinement']
     benchmark=p.semantic_image(p.read_matrix(p.ROOT/'examples'/'approved_87x87.csv'),palette)
     images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS],benchmark]
-    if mode=='photo':
-        labels[1]='Photo source - no cartoon filter'
-        labels=labels[:5]; images=images[:5]
-    canvas=Image.new('RGB',(1380,1090),'#f7f3ef');d=ImageDraw.Draw(canvas)
+    labels.append('Approved style benchmark (87)')
+    canvas=Image.new('RGB',(1830,1090),'#f7f3ef');d=ImageDraw.Draw(canvas)
     d.text((25,15),'FIRST SHEET / VISUAL REVIEW - compare actual pixel candidates',font=p.font(26,True),fill='#30282e')
     for i,(im,label) in enumerate(zip(images,labels)):
-        x=25+(i%3)*450;y=65+(i//3)*510
+        x=25+(i%4)*450;y=65+(i//4)*510
         resample=Image.Resampling.NEAREST if i>=2 else Image.Resampling.LANCZOS
         thumb=ImageOps.contain(im.convert('RGB'),(430,430),resample)
         canvas.paste(thumb,(x+(430-thumb.width)//2,y+(430-thumb.height)//2))
@@ -105,6 +105,7 @@ def prepare(args):
     photo=open_rgb(original,max_side=1200);stage=fit_square(open_rgb(art,max_side=1200))
     require(len(stage.getcolors(maxcolors=2) or [])!=1,'卡通底图是单色，请重新生成')
     import portrait_quality as quality
+    import spatial_quality as spatial
     regions=getattr(args,'focus',None) or []
     quality.focus_mask(args.grid,regions)
     palette=p.load_palette(p.PALETTE);root.mkdir(parents=True)
@@ -113,12 +114,18 @@ def prepare(args):
     reference=samples(stage,args.grid,'flat')
     variants={}; metadata={}; scores={}
     for v in VARIANTS:
-        rows=(quality.optimize(reference,args.colors,palette,variants['flat'],regions)
-              if v=='portrait' else map_candidate(stage,args.grid,args.colors,palette,v))
+        if v=='regional':
+            rows,regional_report=spatial.refine_palette(reference,variants['portrait'],palette,regions)
+        elif v=='coherent':
+            rows,spatial_report=spatial.regularize(reference,variants['portrait'],palette,regions)
+        else:
+            rows=(quality.optimize(reference,args.colors,palette,variants['flat'],regions)
+                  if v=='portrait' else map_candidate(stage,args.grid,args.colors,palette,v))
         if v=='portrait':
             rows,edits=quality.conservative_cleanup(reference,rows,palette,regions)
         else: edits=0
         scores[v]=quality.metrics(reference,rows,palette,regions)
+        scores[v].update(spatial.continuity(reference,rows,palette))
         scores[v]['conservative_cleanup_edits']=edits
         counts,empty,w,h=p.stats(rows,palette)
         require(len(counts)>=2,'转换后不足两种颜色，不能交付肖像候选')
@@ -135,6 +142,7 @@ def prepare(args):
               'stage_sha256':p.sha_file(root/stage_file),'palette_sha256':p.sha_file(root/'palette.json'),
               'comparison_sha256':p.sha_file(root/'review_comparison.png'),'variants':metadata,
               'focus_regions':regions,'quality_metrics':scores,
+              'spatial_report':spatial_report,'regional_report':regional_report,'pareto_diagnostics':spatial.pareto(scores),
               'quality_metric_reference':'all variants versus same area-average stage; weighted Delta E76, not likeness score'}
     dump(root/'prepare.json',manifest)
     dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
@@ -145,7 +153,7 @@ def prepare(args):
 def verified_variant(root, v):
     require(v in VARIANTS,'unknown variant')
     meta=load(root/'prepare.json')
-    require(meta['schema'] in (SCHEMA,LEGACY_SCHEMA) and meta['status']=='UNAPPROVED','invalid prepare manifest')
+    require(meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA,LEGACY_SCHEMA) and meta['status']=='UNAPPROVED','invalid prepare manifest')
     mode=meta['mode']; checks_for(mode)
     require(meta['stage_file']==('cartoon_stage.png' if mode=='cartoon' else 'photo_stage.png'),'invalid stage file')
     require(p.sha_file(root/'palette.json')==p.sha_file(p.PALETTE),'candidate palette differs from pinned MARD reference')
@@ -163,12 +171,23 @@ def verified_variant(root, v):
     with Image.open(target/'semantic_pixels.png') as pixels:
         require(pixels.mode=='RGBA' and pixels.size==(w,h) and pixels.tobytes()==p.semantic_image(rows,palette).tobytes(),'semantic pixels mismatch')
     p.verify_png(target/'candidate_preview.png',p.preview_image(rows,palette))
-    if meta['schema']==SCHEMA:
+    if meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA):
         import portrait_quality as quality
         with Image.open(root/meta['stage_file']) as stage:
             reference=samples(stage.convert('RGB'),meta['grid'],'flat')
         reported=meta['quality_metrics'][v]
         recomputed=quality.metrics(reference,rows,palette,meta['focus_regions'])
+        if meta['schema']==SCHEMA:
+            import spatial_quality as spatial
+            recomputed.update(spatial.continuity(reference,rows,palette))
+            if v=='regional':
+                _,baseline,_,_,_=verified_variant(root,'portrait')
+                expected,report=spatial.refine_palette(reference,baseline,palette,meta['focus_regions'])
+                require(rows==expected and meta['regional_report']==report,'regional refinement mismatch')
+            if v=='coherent':
+                _,baseline,_,_,_=verified_variant(root,'portrait')
+                expected,report=spatial.regularize(reference,baseline,palette,meta['focus_regions'])
+                require(rows==expected and meta['spatial_report']==report,'spatial refinement mismatch')
         require(all(reported.get(k)==value for k,value in recomputed.items()),'candidate quality metrics mismatch')
     return meta,rows,palette,counts,empty
 
@@ -179,10 +198,20 @@ def review_ok(review,meta,v):
     require(isinstance(review.get('notes'),str) and len(review['notes'].strip())>=12,'record concrete visible features and comparison; no boilerplate approvals')
 
 
+def verify_diagnostics(root, meta):
+    if meta['schema']!=SCHEMA: return
+    import spatial_quality as spatial
+    require(set(meta['variants'])==set(VARIANTS) and set(meta['quality_metrics'])==set(VARIANTS),'incomplete candidate set')
+    for variant in VARIANTS:
+        verified_variant(root,variant)
+    require(meta['pareto_diagnostics']==spatial.pareto(meta['quality_metrics']),'Pareto diagnostics mismatch')
+
+
 def select(args):
     root,out=Path(args.prepared),Path(args.out)
     meta,rows,palette,counts,empty=verified_variant(root,args.variant)
     review=load(Path(args.review));review_ok(review,meta,args.variant)
+    verify_diagnostics(root,meta)
     require(not out.exists(),'output exists; refuse overwrite')
     out.mkdir(parents=True)
     p.write_matrix(out/'candidate_matrix.csv',rows)
@@ -206,9 +235,10 @@ def select(args):
 def verify(args):
     root,out=Path(args.prepared),Path(args.sheet)
     info=load(out/'candidate_validation.json')
-    require(info['schema'] in (SCHEMA,LEGACY_SCHEMA) and info['status']=='UNAPPROVED','invalid candidate status')
+    require(info['schema'] in (SCHEMA,PREVIOUS_SCHEMA,LEGACY_SCHEMA) and info['status']=='UNAPPROVED','invalid candidate status')
     v=info['variant'];meta,rows,palette,counts,empty=verified_variant(root,v)
     require(info.get('mode')==meta['mode'],'mode mismatch')
+    verify_diagnostics(root,meta)
     review_ok(load(out/'visual_review.json'),meta,v)
     required={'candidate_matrix.csv','palette.json','semantic_pixels.png','pixel_preview.png','legend.csv','pattern_with_codes.png','candidate_sheet.png','candidate_sheet_A2.pdf','visual_review.json'}
     require(set(info['files'])==required,'incomplete first sheet file list')

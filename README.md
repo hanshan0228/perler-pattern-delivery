@@ -1,16 +1,16 @@
-# Perler Pattern Delivery Skill v2.5.0
+# Perler Pattern Delivery Skill v2.6.0
 
-## v2.5: Portrait candidate optimization
+## v2.6: Portrait candidate optimization
 
-Adds a third `portrait` candidate: actual-palette constrained color selection, optional reviewed focus rectangles (`--focus X0 Y0 X1 Y1`), and strictly limited low-contrast singleton cleanup outside focus regions. Diagnostic CIELAB ΔE76 and isolation counts support visual comparison; they are not aesthetic certifications. The previous candidates and renderer remain unchanged.
+Retains the `portrait` candidate: actual-palette constrained color selection, optional reviewed focus rectangles (`--focus X0 Y0 X1 Y1`), and strictly limited low-contrast singleton cleanup outside focus regions. Diagnostic CIELAB ΔE76 and isolation counts support visual comparison; they are not aesthetic certifications. Adds `regional` (bounded equal-count palette swaps) and `coherent` (same palette, source-aware spatial smoothing with hard detail/color-error guards). Five candidates; Pareto diagnostics are not a winner selection. The previous candidates and renderer remain unchanged.
 
 ## v2.4: Render integrity gate (retained)
 
 Never ask an image model to draw the final chart. The same deterministic Python renderer produces the numbered grid, color legend and counts for cartoon and realistic portraits. `first_sheet.py prepare --mode photo --image portrait.jpg --grid 87 --colors 40 --out review` uses the original photo; cartoon mode requires an actual artwork file. Review, select and verify before sharing the resulting PNG/PDF. For both candidate and approved sheets, verify checks actual rendered PNG/PDF content, not only hashes. Approved masters are unchanged; use a new output directory for the new validation format. Exact rerender checks require the same font and dependencies.
 
-## Default first-sheet workflow (v2.5)
+## Default first-sheet workflow (v2.6)
 
-For new portrait requests, create a real cartoon illustration using an authorized image editor, then run `scripts/first_sheet.py prepare`, review all three candidates, `select`, and `verify`. The deliverable is a numbered, palette-accurate **unapproved** single-sheet chart rather than an illustration or bead mockup. See [first-sheet contract](references/FIRST_SHEET.md) and [SKILL.md](SKILL.md). Offline filters are explicitly experimental.
+For new portrait requests, create a real cartoon illustration using an authorized image editor, then run `scripts/first_sheet.py prepare`, review all five candidates, `select`, and `verify`. The deliverable is a numbered, palette-accurate **unapproved** single-sheet chart rather than an illustration or bead mockup. See [first-sheet contract](references/FIRST_SHEET.md) and [SKILL.md](SKILL.md). Offline filters are explicitly experimental.
 
 
 An executable Agent Skill for creating verified perler/fuse-bead charts and customer-ready sheets without modifying approved pixel data.

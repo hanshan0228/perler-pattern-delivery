@@ -59,7 +59,7 @@ class PortraitQualityTests(unittest.TestCase):
             root=Path(t);source=root/'src.png';Image.fromarray(self.data.astype('uint8')).save(source)
             out=root/'prepared'
             f.prepare(argparse.Namespace(image=str(source),mode='photo',cartoon_image=None,grid=9,colors=7,out=str(out),focus=[(.2,.2,.8,.8)]))
-            meta=f.load(out/'prepare.json');self.assertEqual(set(meta['variants']),{'detail','flat','portrait'})
+            meta=f.load(out/'prepare.json');self.assertEqual(set(meta['variants']),{'detail','flat','portrait','regional','coherent'})
             for v in f.VARIANTS:f.verified_variant(out,v)
             meta['quality_metrics']['portrait']['focus_mean_delta_e76']=-1;f.dump(out/'prepare.json',meta)
             with self.assertRaisesRegex(p.PatternError,'quality metrics'):f.verified_variant(out,'portrait')

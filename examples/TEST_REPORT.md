@@ -1,3 +1,20 @@
+# v2.6.0 test report
+
+- `python -m unittest discover -s tests -v`: 44 tests passed (56.381 s); 37 prior tests + 7 spatial tests.
+- Existing renderer, pinned MARD palette, approved 58×58 and 87×87 matrices compared byte-for-byte with v2.5.0: unchanged.
+- Both real-sample candidate sets passed `verify_diagnostics` (all candidate grids, previews, palette, recomputed metrics, refinements and Pareto list). Inputs and outputs contain customer imagery and are not included in the public repository.
+
+## Same-color-count measurements, 87×87
+
+Both spatial comparisons retain the exact same set of MARD codes and protect all specified focus cells and source edges. The two sample results are not claims of general aesthetic improvement.
+
+| Sample | Actual colors | Flat-source transitions, before → after | Isolated cells, before → after | Changed cells | Focus mean ΔE76, before → after | Global mean ΔE76, before → after |
+|---|---:|---:|---:|---:|---:|---:|
+| Cartoon |33|332 → 319|1096 → 1094|11|5.2448 → 5.2448|4.9123 → 4.9135|
+| Photo |39|2330 → 2030|431 → 378|179|7.2767 → 7.2767|7.5555 → 7.5695|
+
+`regional` (same used count, potentially different MARD code set): cartoon weighted RMS ΔE76 6.3384 → 6.3289, one swap, 68 changed cells; photo 8.0215 → 8.0215, no acceptable swap found. This tests a small local search, not global optimality. No change to approved matrices.
+
 # Validation report — v2.5.0
 
 Local command: `python -m unittest discover -s tests -v` — 37 tests passed (31 existing, 6 new). Exit status 0.

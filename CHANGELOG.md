@@ -1,3 +1,9 @@
+## v2.6.0 — Regional palette refinement and spatial coherence
+
+- Five reviewed candidate variants, including bounded actual-count palette swaps and same-code-set source-aware spatial regularization. No-op if hard error/continuity guards fail.
+- Adds flat-region transition metrics and Pareto diagnostics; verifies the new reports and candidates, preserves legacy prepared manifests and the production renderer.
+- Seven new regression tests for palette count, locks, error caps, no-op, repeatability, Pareto and tamper detection.
+
 ## v2.5.0 — Portrait quality candidates
 
 - Added third `portrait` candidate with palette-constrained weighted ΔE76 optimization, optional reviewed focus regions, and conservative low-contrast singleton cleanup.

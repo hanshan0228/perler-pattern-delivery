@@ -1,4 +1,4 @@
-# 首稿质量规范 / First-sheet quality contract (v2.5)
+# 首稿质量规范 / First-sheet quality contract (v2.6)
 
 ## 目标与输入分流
 
@@ -14,7 +14,7 @@ Adjust important features to actual photo (not all subjects have flowers). Do no
 
 ## Visual review (required before first user-visible chart)
 
-Inspect the original, cartoon base and all three candidate previews at thumbnail and full-size. Compare against approved style benchmark generated from `examples/approved_87x87.csv` (33 colors, 7569 beads, digest `8c7bcbb1ad12ac1257b38c89496b1924f93fb40cc06a50c7859d1d2b201e6fc5`). It is a **style** reference — never replace the new customer's subject with it. The user-approved 58×58 benchmark also remains unchanged.
+Inspect the original, cartoon base and all five candidate previews at thumbnail and full-size. Compare against approved style benchmark generated from `examples/approved_87x87.csv` (33 colors, 7569 beads, digest `8c7bcbb1ad12ac1257b38c89496b1924f93fb40cc06a50c7859d1d2b201e6fc5`). It is a **style** reference — never replace the new customer's subject with it. The user-approved 58×58 benchmark also remains unchanged.
 
 The five fields in the review JSON mean:
 
@@ -28,7 +28,7 @@ Use concrete notes stating what was inspected and why the selected variant wins.
 
 ## Deterministic rendering and acceptance
 
-`prepare` pads rather than silently cropping an important silhouette, produces three candidates (central median, area average, and MARD-constrained portrait) and a review sheet. The portrait variant has a conservative cleanup pass outside designated focus regions and source edges; the other two variants are unchanged. `select` requires review bound to the selected matrix digest and actual comparison image; its `candidate_sheet.png` is explicitly unapproved. `verify` checks required files, pinned palette, matrix and semantic pixels, exact color counts, legend and file hashes. It cannot certify aesthetic quality or that a human actually looked at the images. User confirmation triggers existing `freeze` and `deliver`; never auto-approve the candidate.
+`prepare` pads rather than silently cropping an important silhouette, produces five candidates (central median, area average, MARD-constrained portrait, regional palette refinement, and spatially coherent refinement) and a review sheet. The portrait variant has a conservative cleanup pass outside designated focus regions and source edges; the other two variants are unchanged. `select` requires review bound to the selected matrix digest and actual comparison image; its `candidate_sheet.png` is explicitly unapproved. `verify` checks required files, pinned palette, matrix and semantic pixels, exact color counts, legend and file hashes. It cannot certify aesthetic quality or that a human actually looked at the images. User confirmation triggers existing `freeze` and `deliver`; never auto-approve the candidate.
 
 ## Final user response
 
@@ -41,6 +41,10 @@ Lead with the selected candidate sheet; include a link to the high-resolution sh
 - 禁止用生成式模型直接画施工图，即使用户说“直接给我图纸”。只可用它生成艺术底图。没有本地执行能力就明确说明限制。
 - 重渲染验证针对同一可信代码与运行环境，不是对任意第三方截图的 OCR 认证，也不是不可伪造的数字签名或自动审美评价。
 
-## v2.5 portrait variant
+## v2.6 portrait variant
 
-Use `--focus x0 y0 x1 y1` (repeatable, normalized coordinates of the padded square stage) only after inspecting the actual artwork. This is a manual region, not a face detector. Pixel selection is constrained to actual MARD reference colors and the requested maximum color count; high-contrast edges and focus regions receive greater weight. Cleanup never changes cells within focus rectangles or above the source contrast threshold. Compare actual previews, actual color counts, ΔE76 diagnostics and isolated-cell counts. Do not auto-select the lowest-error variant; more colors can increase complexity and isolated cells. All three variants use the same immutable delivery and review gates.
+Use `--focus x0 y0 x1 y1` (repeatable, normalized coordinates of the padded square stage) only after inspecting the actual artwork. This is a manual region, not a face detector. Pixel selection is constrained to actual MARD reference colors and the requested maximum color count; high-contrast edges and focus regions receive greater weight. Cleanup never changes cells within focus rectangles or above the source contrast threshold. Compare actual previews, actual color counts, ΔE76 diagnostics and isolated-cell counts. Do not auto-select the lowest-error variant; more colors can increase complexity and isolated cells. All five variants use the same immutable delivery and review gates.
+
+## v2.6 spatial/region candidates
+
+`regional` uses up to two bounded palette swaps from `portrait`, requiring the same actual number of in-use colors, lower weighted RMS error, and no increase in focus/edge mean error. `coherent` uses the very same palette as `portrait`, freezes focus/strong-edge cells and reduces unnecessary flat-region boundaries within per-cell and global error caps; reverts if isolation increases or flat-region boundaries do not decrease. Both may be identical to the base candidate. Review all five, the user-approved style benchmark, and diagnostic Pareto set; no automatic aesthetic winner. All reports are recomputed for new v4 prepared manifests.
