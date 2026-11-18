@@ -1,3 +1,9 @@
+## v2.9.0 — Optional local neural segmentation adapter (runtime unverified)
+
+- Explicit MediaPipe SelfieMulticlass local model entrypoint, SHA-256/TFLite header checks, six-class confidence projection, ambiguity abstention and accessories/face-edge protection.
+- Keep stage-bound human review and seven candidates. No silent fallback on requested inference failure; legacy paths and production rendering unchanged.
+- Eight focused tests passed with synthetic probability maps and mocked runtime; optional real-model smoke test skipped (weights and runtime unavailable). No claim of empirically improved segmentation or appearance.
+
 ## v2.8.0 — Editable region proposals and conservative local tone refinement
 
 - Optional OpenCV face localization; deterministic color/connectivity suggestions with unknown regions. Offline grid-aligned mask editor, exact PNG label import, and reviewed plan bound to stage pixels and grid size.

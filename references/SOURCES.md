@@ -16,3 +16,7 @@
 - OpenCV bilateral and Canny APIs (optional offline accelerator) — https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html and https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.html
 
 The offline cartoon filters and pixel-grid samplers in this repository are independently implemented using Pillow/NumPy and optionally OpenCV.
+
+## v2.9 optional neural backend
+
+- Google MediaPipe SelfieMulticlass: https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter ; official model card states Apache 2.0 and cautions against pixel-perfect-mask use: https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf ; upstream SDK https://github.com/google-ai-edge/mediapipe . No weights or upstream source bundled. Optional runtime not verified in this environment. See SEMANTIC_REGIONS.md.

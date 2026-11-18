@@ -7,3 +7,8 @@ project/
 build/
 dist/
 .DS_Store
+
+# Optional third-party model weights are supplied locally, never committed.
+*.tflite
+*.task
+models/

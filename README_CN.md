@@ -1,4 +1,8 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.8.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.9.0
+
+## v2.9 — 可选神经网络区域建议
+
+新增可选的 Google MediaPipe 六类语义分割模型入口，带置信度弃权、明确模型文件 SHA-256、蒙版校对和来源记录。权重不内置、不自动下载；本次尚未执行真实模型推理，不声称画质已提升。详见 [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md)。
 
 ## v2.8：区域蒙版建议与局部色阶精修
 

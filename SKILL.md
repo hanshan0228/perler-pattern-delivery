@@ -4,7 +4,7 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.8.0"
+  version: "2.9.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
@@ -19,7 +19,14 @@ metadata:
 - 提交新肖像时只使用 `UNAPPROVED`，取得用户明确认可后才 `freeze`。用户一次要卡通和写实，应分别完成两套独立候选与校验，不能共享或虚构矩阵。交付链接必须指向本次已验收文件。
 - 旧版交付包没有重渲染校验，需从原有 MASTER 重新 `deliver` 到新目录；禁止更改 MASTER 或仅修改旧校验文件来通过。重渲染验收需使用相同代码、字体、Pillow 与 ReportLab 版本。环境不同则用可信 MASTER 在新环境重新导出。
 
-## v2.8 区域蒙版建议与局部肤色色阶精修（优先用于新肖像）
+## v2.9 可选真实语义分割模型入口（须先核验模型与实际蒙版）
+
+- 优先考虑本地 MediaPipe SelfieMulticlass 六类模型来建议区域，但仅在运行环境已安装模型依赖、用户具备使用授权且本地模型文件真实存在时使用。安装与命令见 [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md)。此版本的真实模型推理尚未验证，不能保证使用该路径就比已有候选更好。
+- 使用 `auto_regions.py propose --stage ... --grid 87 --model ... --model-sha256 ... --out ...`。模型接收实际方形底图；六类置信度按格面积投影，置信度、类别相差和覆盖率不足时保留 unknown；饰品标记 protect，面部强边缘的保护仍是启发式，不能冒充五官语义识别。画风与人物较复杂时必须检查并修正。
+- 神经网络输出只能生成 UNREVIEWED 区域建议，仍必须用编辑器校对、记录实际审核并 `accept`，再运行原有 `first_sheet.py prepare --region-plan ...`。不得把模型输出直接当作可施工色号、不得自动批准，也不得跳过最终图纸程序验证。没有真实模型时可显式选旧启发式或手工路径；请求神经模型失败不得静默回退。
+- `unknown` 不代表锁定，重要五官必须标为 `protect`。模型及图片不默认联网传输，模型权重不包含在 Skill 内。所有冻结 MASTER 仍绝不修改。
+
+## v2.8 区域蒙版建议与局部肤色色阶精修（传统备选）
 
 - 用 `scripts/auto_regions.py propose --stage ... --grid ... --out ...` 生成本次底图的区域建议（可选 OpenCV 人脸位置检测 + 色彩/连通区域启发式；不是神经网络语义分割）。没有可靠单人定位时，使用 `--face X0 Y0 X1 Y1` 或 `--manual`，不猜测人脸。冷色照明或非自然肤色允许直接保留旧候选。
 - 必须实际检查 `overlay.png`，使用离线 `mask_editor.html` 修正皮肤、头发、衣服、背景和保护区，无法准确归类的地方保留 unknown。unknown 仅表示不施加该区域的专门色彩约束，并非整个格子锁定。眼睛、嘴角、耳饰、精细肩带等需设 protect。只读取本次底图，不复用旧照片蒙版。
@@ -43,7 +50,7 @@ python scripts/first_sheet.py prepare --mode photo --image original.jpg --grid 8
 
 **调用者不需要另写长提示词。** 听到“卡通版”“卡通拼豆图纸”“做成拼豆图纸”“再给我一个成品”且上下文是制作拼豆图纸，默认最终产物为顾客单页**有色号的施工图**。新肖像默认精致平涂卡通；用户明确要求写实才用 photo 模式。只有明确要求“卡通底图”“只要效果预览/实物模拟”才仅交付相应图。用户要改已确认图纸排版则优先使用 MASTER，不重新卡通化。
 
-### 新肖像的必经生产线（v2.8，首次使用先读这里）
+### 新肖像的必经生产线（v2.9，首次使用先读这里）
 
 1. 使用实际上传的原照片作为图像模型编辑参考。按 [首稿规范](references/FIRST_SHEET.md) 生成**无网格、无色号、无标题**的精致平涂卡通底图。必须用真正的图像生成/编辑模型或用户提供的卡通原稿；离线滤镜只能是用户明确选择的实验模式。没有图像工具和真实底图就说明缺口，不能偷偷改用滤镜，也不能伪造图纸。
 2. 运行首稿生产线（默认 87×87、最多 33 色；用户指定值优先）：

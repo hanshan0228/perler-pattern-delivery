@@ -1,4 +1,8 @@
-# Perler Pattern Delivery Skill v2.8.0
+# Perler Pattern Delivery Skill v2.9.0
+
+## v2.9 — Optional neural region proposals
+
+Optional local MediaPipe SelfieMulticlass adapter adds six-class confidence-aware region proposals with abstention, explicit model SHA-256, and the existing mandatory mask review. No weight downloads or identity recognition; the real neural runtime has not yet been tested, so this is an opt-in integration, not a claim of improved portraits. See [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md).
 
 ## v2.8: Editable region proposals and local tone refinement
 

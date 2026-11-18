@@ -1,3 +1,10 @@
+# v2.9.0 test report
+
+- Full local suite: `python -m unittest discover -s tests -v` — 64 passed, 1 skipped, exit status 0 (74.292 s), 65 collected. The skipped test requires real MediaPipe model weights and runtime. Eight new focused tests passed with synthetic probability maps and a mocked MediaPipe interface; these do not validate neural model accuracy or compatibility with an actual runtime.
+- Model download failed in this environment (DNS/network restriction); the optional MediaPipe runtime was not installed. No neural inference or measured appearance improvement is claimed. Real deployment requires installing the optional requirements, obtaining the official file and completing the real-runtime smoke test and visual validation.
+- Regression verifies previous source-bound masks, approved matrices, chart rendering, PDF checks and palette constraints. The pinned reference palette, approved matrices, renderer and the seven candidate implementations are unchanged from the v2.8 local package. The GitHub approved CSV fixtures use LF rather than the local ZIP CRLF; normalized contents match the previous GitHub blob SHAs.
+- No new customer imagery, generated portraits, or third-party model weights distributed.
+
 # v2.8.0 test report
 
 - Six new auto-region/tone tests passed. All six prior region/printing tests passed separately. Full regression attempt timed out during the first-sheet end-to-end test after 19 tests reported OK; no full-pass claim is made.

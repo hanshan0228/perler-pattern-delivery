@@ -1,4 +1,4 @@
-"""Conservative, editable portrait region proposals. Not a semantic neural parser.
+"""Editable portrait region proposals (heuristic or explicit optional neural model).
 Optional OpenCV Haar face localization; unknown pixels stay unknown. Review
 is required before any mask can drive a candidate. No network or identity inference.
 """
@@ -117,12 +117,20 @@ def mask_editor(stage,labels,path):
 
 def propose_cli(args):
     stage=stage_data(args.stage);root=Path(args.out);require(not root.exists(),'output exists')
-    if args.manual: labels=np.zeros((args.grid,args.grid),np.uint8);box=None;details={'reason':'manual blank mask'}
-    else: box=args.face or face_box(stage);labels,details=propose(stage,args.grid,box)
+    model=getattr(args,'model',None);model_sha=getattr(args,'model_sha256',None)
+    require(not (model and (args.manual or args.face)),'choose neural model OR manual/heuristic proposal')
+    require(bool(model)==bool(model_sha),'--model and --model-sha256 must be supplied together')
+    if model:
+        import semantic_regions as neural
+        maps,provenance=neural.infer(stage,model,model_sha)
+        labels,details=neural.project(stage,maps,args.grid,min_confidence=getattr(args,'min_confidence',.70),min_margin=getattr(args,'min_margin',.15),min_coverage=getattr(args,'min_coverage',.70))
+        details.update(provenance);box=None;method='mediapipe-selfie-multiclass'
+    elif args.manual: labels=np.zeros((args.grid,args.grid),np.uint8);box=None;details={'reason':'manual blank mask'};method='manual'
+    else: box=args.face or face_box(stage);labels,details=propose(stage,args.grid,box);method='face localization + conservative Lab connectivity'
     root.mkdir(parents=True);stage.save(root/'stage.png');color_image(labels).save(root/'proposed_mask.png');mask_editor(stage,labels,root/'mask_editor.html')
     overlay=np.asarray(stage.resize((600,600))).astype(float); colors=np.asarray(color_image(labels).resize((600,600),Image.Resampling.NEAREST)); visible=np.any(colors!=0,axis=-1)
     overlay[visible]=.57*overlay[visible]+.43*colors[visible];Image.fromarray(overlay.astype(np.uint8)).save(root/'overlay.png')
-    info={'grid':args.grid,'stage_digest':stage_digest(stage),'face_box':box,'method':'manual' if args.manual else 'face localization + conservative Lab connectivity','details':details,'counts':{k:int((labels==i).sum()) for i,k in enumerate(LABELS)},'status':'UNREVIEWED'}
+    info={'grid':args.grid,'stage_digest':stage_digest(stage),'face_box':box,'method':method,'details':details,'counts':{k:int((labels==i).sum()) for i,k in enumerate(LABELS)},'status':'UNREVIEWED'}
     (root/'proposal.json').write_text(json.dumps(info,indent=2));print('UNREVIEWED mask; inspect overlay, edit if needed, then accept.')
 
 def accept(args):
@@ -132,6 +140,8 @@ def accept(args):
     require(np.any(labels==1),'no reviewed skin cells; use legacy candidates instead')
     out=Path(args.out);require(not out.exists(),'output exists')
     plan={'schema':SCHEMA,'grid':meta['grid'],'stage_digest':meta['stage_digest'],'regions':spec(labels),'review_notes':args.notes,'status':'REGION_REVIEWED_NOT_CUSTOMER_APPROVED'}
+    if meta.get('method')=='mediapipe-selfie-multiclass':
+        plan['proposal_provenance']={'method':meta['method'],'model_sha256':meta['details']['model_sha256'],'proposal_digest':p.sha_file(root/'proposal.json'),'reviewed_mask_sha256':p.sha_file(Path(args.mask))}
     out.write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding='utf8');print('Reviewed region plan only, not customer approval.')
 
 def load_plan(path,stage,n):
@@ -140,6 +150,10 @@ def load_plan(path,stage,n):
 def verify_plan(plan,stage,n):
     require(plan.get('schema')==SCHEMA and plan.get('status')=='REGION_REVIEWED_NOT_CUSTOMER_APPROVED' and plan.get('grid')==n and plan.get('stage_digest')==stage_digest(stage),'mask plan is not bound to this exact padded source/grid')
     require(isinstance(plan.get('review_notes'),str) and len(plan['review_notes'].strip())>=20,'missing mask review notes')
+    provenance=plan.get('proposal_provenance')
+    if provenance is not None:
+        import re
+        require(isinstance(provenance,dict) and provenance.get('method')=='mediapipe-selfie-multiclass' and all(isinstance(provenance.get(k),str) and re.fullmatch(r'[0-9a-f]{64}',provenance[k]) for k in ('model_sha256','proposal_digest','reviewed_mask_sha256')),'invalid neural provenance')
     import region_finish as r
     regions=plan['regions'];require(isinstance(regions,list) and all(isinstance(x,dict) and set(x)=={'kind','grid','runs'} for x in regions),'reviewed plan must use exact raster runs')
     m=r.masks(n,regions);labels=np.zeros((n,n),np.uint8)
@@ -150,7 +164,7 @@ def verify_plan(plan,stage,n):
 
 def main():
     a=argparse.ArgumentParser(description=__doc__);sub=a.add_subparsers(dest='cmd',required=True)
-    b=sub.add_parser('propose');b.add_argument('--stage',required=True);b.add_argument('--grid',type=int,default=87);b.add_argument('--face',nargs=4,type=float);b.add_argument('--manual',action='store_true');b.add_argument('--out',required=True);b.set_defaults(func=propose_cli)
+    b=sub.add_parser('propose');b.add_argument('--stage',required=True);b.add_argument('--grid',type=int,default=87);b.add_argument('--face',nargs=4,type=float);b.add_argument('--manual',action='store_true');b.add_argument('--model',help='Local official MediaPipe SelfieMulticlass TFLite model');b.add_argument('--model-sha256');b.add_argument('--min-confidence',type=float,default=.70);b.add_argument('--min-margin',type=float,default=.15);b.add_argument('--min-coverage',type=float,default=.70);b.add_argument('--out',required=True);b.set_defaults(func=propose_cli)
     b=sub.add_parser('accept');b.add_argument('--proposal',required=True);b.add_argument('--mask',required=True);b.add_argument('--notes',required=True);b.add_argument('--out',required=True);b.set_defaults(func=accept)
     args=a.parse_args()
     try: require(not hasattr(args,'grid') or 1<=args.grid<=145,'grid 1..145');args.func(args)
