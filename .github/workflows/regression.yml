@@ -1,0 +1,48 @@
+name: Perler Skill regression tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perler-skill-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Core tests / Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run full regression suite
+        run: python -m unittest discover -s tests -v
+      - name: Verify Skill metadata and baseline files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          skill=Path('SKILL.md').read_text(encoding='utf-8')
+          assert skill.startswith('---\n')
+          assert 'name: perler-pattern-delivery' in skill.split('---',2)[1]
+          for path in ('assets/mard_palette.json','examples/approved_58x58.csv','examples/approved_87x87.csv'):
+              assert Path(path).is_file(), path
+          print('Pinned reference assets and Agent Skill metadata present')
+          PY
