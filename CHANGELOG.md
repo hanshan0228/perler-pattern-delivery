@@ -1,3 +1,9 @@
+## v2.8.0 — Editable region proposals and conservative local tone refinement
+
+- Optional OpenCV face localization; deterministic color/connectivity suggestions with unknown regions. Offline grid-aligned mask editor, exact PNG label import, and reviewed plan bound to stage pixels and grid size.
+- Seventh `tone` candidate inside reviewed skin regions, same actual palette as `finish`, protected features locked, non-increasing local luminance/chroma step errors and isolation guards. No-op on regression.
+- Six focused regression tests for proposals, exact mask round-trip, source binding, locks, recomputation and tampering. Existing renderer, reference palette and approved fixtures untouched.
+
 ## v2.7.0 — Reviewed region color refinement and readable boards
 
 - Optional region-aware `finish` variant with explicit protected polygons, source-dependent warm-skin constraints, localized continuity and conservative rare-color handling.

@@ -1,4 +1,8 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.7.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.8.0
+
+## v2.8：区域蒙版建议与局部色阶精修
+
+可选本地人脸定位、颜色及连通区域启发式建议、离线逐格蒙版编辑、绑定底图的人工审核计划，并增加同色卡的局部肤色色阶候选。不是全自动语义分割，不自动批准画质。详见 [AUTO_REGIONS.md](references/AUTO_REGIONS.md)。
 
 ## v2.7：区域配色与打印可读性
 

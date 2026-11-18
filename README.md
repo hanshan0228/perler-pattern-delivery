@@ -1,4 +1,8 @@
-# Perler Pattern Delivery Skill v2.7.0
+# Perler Pattern Delivery Skill v2.8.0
+
+## v2.8: Editable region proposals and local tone refinement
+
+Optional local face-box detection plus conservative color/connectivity proposals, offline mask editing, stage-bound reviewed plans, and same-palette skin tone refinement with hard guards. No neural semantic segmentation or automatic approval. See [AUTO_REGIONS.md](references/AUTO_REGIONS.md).
 
 ## v2.7: Reviewed regions and readable print output
 

@@ -1,3 +1,11 @@
+# v2.8.0 test report
+
+- Six new auto-region/tone tests passed. All six prior region/printing tests passed separately. Full regression attempt timed out during the first-sheet end-to-end test after 19 tests reported OK; no full-pass claim is made.
+- Two local 87×87 portrait candidate sets were prepared and all seven variants verified by `verify_diagnostics`, including tone recomputation, region-plan binding and matrix/preview checks. These are unapproved candidates, not new approved PDF deliveries.
+- Pinned palette, approved 58×58 and 87×87 fixtures, and deterministic renderer are byte-identical to v2.7.
+- Same-palette tone refinement results (finish → tone): photo 30 colors, 9 cells changed, 6,666 fixed cells unchanged, smooth skin luma step error 2.7345 → 2.7286, chroma step error 2.3989 → 2.3958; cartoon 33 colors, 4 cells changed, 6,631 fixed cells unchanged, luma 0.8904 → 0.8800, chroma 1.1390 → 1.1254. Neither has a substantial visible quality improvement. Manual correction of automatic masks was necessary; no semantic accuracy guarantee.
+- No new personal pictures, masks, or matrices are distributed in this repository.
+
 # v2.7.0 test report
 
 - Full regression: `python -m unittest discover -s tests -v`, 50 tests passed, exit 0 (73.244 s). Six new tests cover region constraints, immutable protected cells, insufficient budget, invalid polygons, all 291 palette contrast checks, board rendering/tampering, and regional-report re-computation.

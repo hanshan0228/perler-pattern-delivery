@@ -15,7 +15,21 @@ KINDS=('skin','hair','cloth','background','protect')
 def masks(n, regions):
     result={k:np.zeros((n,n),bool) for k in KINDS}
     for region in regions:
-        kind=region['kind']; pts=region['polygon']
+        kind=region['kind']; pts=region.get('polygon')
+        if 'runs' in region:
+            if kind not in KINDS or region.get('grid')!=n or pts is not None: raise p.PatternError('invalid raster regions')
+            mask=np.zeros((n,n),bool)
+            for run in region['runs']:
+                if len(run)!=3 or any(type(v) is not int for v in run): raise p.PatternError('invalid region run')
+                y,x0,x1=run
+                if not (0<=y<n and 0<=x0<x1<=n): raise p.PatternError('region run out of bounds')
+                if mask[y,x0:x1].any(): raise p.PatternError('overlapping runs')
+                mask[y,x0:x1]=True
+            if kind!='protect':
+                for k in KINDS[:-1]: result[k][mask]=False
+            result[kind]|=mask
+            continue
+        if pts is None: raise p.PatternError('missing region polygon')
         if kind not in KINDS or len(pts)<3 or any(len(t)!=2 or not all(np.isfinite(t)) or not all(0<=v<=1 for v in t) for t in pts):
             raise p.PatternError('invalid normalized polygon')
         im=Image.new('1',(n*4,n*4));ImageDraw.Draw(im).polygon([(round(x*n*4),round(y*n*4)) for x,y in pts],fill=1)

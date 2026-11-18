@@ -27,7 +27,10 @@ def checks_for(mode):
     if mode=='cartoon': return CHECKS
     raise p.PatternError('invalid portrait mode')
 VARIANTS = ('detail', 'flat', 'portrait', 'regional', 'coherent')
-ALL_VARIANTS = VARIANTS + ('finish',)
+ALL_VARIANTS = VARIANTS + ('finish', 'tone')
+
+def active_variants(meta):
+    return VARIANTS + (('finish',) if 'region_spec' in meta else ()) + (('tone',) if 'region_plan' in meta else ())
 CHECKS = ('recognizable_subject', 'cartoon_not_photo_filter', 'framing_and_silhouette',
           'key_features_readable', 'clean_regions_and_no_artifacts')
 
@@ -78,6 +81,8 @@ def make_comparison(root, original, stage, variants, palette, mode="cartoon"):
     images=[original,stage,*[p.semantic_image(variants[v],palette) for v in VARIANTS]]
     if 'finish' in variants:
         images.append(p.semantic_image(variants['finish'],palette)); labels.append('Region-aware finish')
+    if 'tone' in variants:
+        images.append(p.semantic_image(variants['tone'],palette)); labels.append('Local skin tone refinement')
     images.append(benchmark)
     labels.append('Approved style benchmark (87)')
     canvas=Image.new('RGB',(1830,70+510*((len(images)+3)//4)),'#f7f3ef');d=ImageDraw.Draw(canvas)
@@ -118,16 +123,25 @@ def prepare(args):
     reference=samples(stage,args.grid,'flat')
     variants={}; metadata={}; scores={}
     region_arg=getattr(args,'regions',None)
-    region_spec=load(Path(region_arg)) if region_arg else None
+    plan_arg=getattr(args,'region_plan',None)
+    require(not (plan_arg and region_arg),'choose either reviewed region plan or manual polygons')
+    region_plan=None
+    if plan_arg:
+        import auto_regions
+        region_plan=auto_regions.load_plan(plan_arg,stage,args.grid)
+    region_spec=region_plan['regions'] if region_plan else (load(Path(region_arg)) if region_arg else None)
     if region_spec is not None:
         import region_finish
-        require(isinstance(region_spec,list) and bool(region_spec),'regions must be a nonempty polygon list')
+        require(isinstance(region_spec,list) and bool(region_spec),'regions must be a nonempty region list')
         region_finish.masks(args.grid,region_spec)
     finish_colors=getattr(args,'finish_colors',None) or args.colors
     require(1<=finish_colors<=args.colors,'finish-colors must not exceed overall budget')
-    active=ALL_VARIANTS if region_spec is not None else VARIANTS
+    active=VARIANTS + (('finish',) if region_spec is not None else ()) + (('tone',) if region_plan else ())
     for v in active:
-        if v=='finish':
+        if v=='tone':
+            import tone_quality
+            rows,tone_report=tone_quality.refine(reference,variants['finish'],palette,region_spec)
+        elif v=='finish':
             rows,finish_report=region_finish.optimize(reference,variants['coherent'],palette,region_spec,max_colors=finish_colors)
         elif v=='regional':
             rows,regional_report=spatial.refine_palette(reference,variants['portrait'],palette,regions)
@@ -161,6 +175,8 @@ def prepare(args):
               'quality_metric_reference':'all variants versus same area-average stage; weighted Delta E76, not likeness score'}
     if region_spec is not None:
         manifest.update(region_spec=region_spec,finish_report=finish_report,finish_colors=finish_colors)
+    if region_plan is not None:
+        manifest.update(region_plan=region_plan,tone_report=tone_report)
     dump(root/'prepare.json',manifest)
     dump(root/'visual_review_TEMPLATE.json',{'variant':'detail','codes_sha256':metadata['detail']['codes_sha256'],
          'comparison_sha256':manifest['comparison_sha256'],'checks':{k:False for k in checks},'notes':''})
@@ -191,7 +207,12 @@ def verified_variant(root, v):
     if meta['schema'] in (SCHEMA,PREVIOUS_SCHEMA):
         import portrait_quality as quality
         with Image.open(root/meta['stage_file']) as stage:
-            reference=samples(stage.convert('RGB'),meta['grid'],'flat')
+            stage=stage.convert('RGB')
+            reference=samples(stage,meta['grid'],'flat')
+            if 'region_plan' in meta:
+                import auto_regions
+                plan=auto_regions.verify_plan(meta['region_plan'],stage,meta['grid'])
+                require(plan['regions']==meta['region_spec'],'reviewed plan differs from used regions')
         reported=meta['quality_metrics'][v]
         recomputed=quality.metrics(reference,rows,palette,meta['focus_regions'])
         if meta['schema']==SCHEMA:
@@ -206,6 +227,11 @@ def verified_variant(root, v):
                 _,baseline,_,_,_=verified_variant(root,'coherent')
                 expected,report=region_finish.optimize(reference,baseline,palette,meta['region_spec'],max_colors=meta['finish_colors'])
                 require(rows==expected and meta['finish_report']==report,'region finish mismatch')
+            if v=='tone':
+                import tone_quality
+                _,baseline,_,_,_=verified_variant(root,'finish')
+                expected,report=tone_quality.refine(reference,baseline,palette,meta['region_spec'])
+                require(rows==expected and meta['tone_report']==report,'tone refinement mismatch')
             if v=='coherent':
                 _,baseline,_,_,_=verified_variant(root,'portrait')
                 expected,report=spatial.regularize(reference,baseline,palette,meta['focus_regions'])
@@ -223,7 +249,7 @@ def review_ok(review,meta,v):
 def verify_diagnostics(root, meta):
     if meta['schema']!=SCHEMA: return
     import spatial_quality as spatial
-    active=ALL_VARIANTS if 'region_spec' in meta else VARIANTS
+    active=active_variants(meta)
     require(set(meta['variants'])==set(active) and set(meta['quality_metrics'])==set(active),'incomplete candidate set')
     for variant in active:
         verified_variant(root,variant)
@@ -291,7 +317,7 @@ def verify(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='cmd',required=True)
-    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.add_argument('--finish-colors',type=int,help='Optional lower color budget for regional finish only');a.add_argument('--regions',help='Reviewed normalized polygon JSON: skin, hair, cloth, background, protect');a.set_defaults(func=prepare)
+    a=sub.add_parser('prepare');a.add_argument('--image',required=True);a.add_argument('--mode',choices=['cartoon','photo'],default='cartoon');a.add_argument('--cartoon-image');a.add_argument('--out',required=True);a.add_argument('--grid',type=int,default=87);a.add_argument('--colors',type=int,default=33);a.add_argument('--focus',nargs=4,type=float,action='append',metavar=('X0','Y0','X1','Y1'),help='Optional reviewed region in normalized padded-stage coordinates; repeatable');a.add_argument('--finish-colors',type=int,help='Optional lower color budget for regional finish only');a.add_argument('--regions',help='Reviewed normalized polygon JSON: skin, hair, cloth, background, protect');a.add_argument('--region-plan',help='Source-bound reviewed mask plan from auto_regions.py accept');a.set_defaults(func=prepare)
     a=sub.add_parser('select');a.add_argument('--prepared',required=True);a.add_argument('--variant',choices=ALL_VARIANTS,required=True);a.add_argument('--review',required=True);a.add_argument('--out',required=True);a.add_argument('--name',default='卡通定制肖像');a.set_defaults(func=select)
     a=sub.add_parser('verify');a.add_argument('--prepared',required=True);a.add_argument('--sheet',required=True);a.set_defaults(func=verify)
     args=parser.parse_args()

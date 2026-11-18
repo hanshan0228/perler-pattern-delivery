@@ -4,7 +4,7 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.7.0"
+  version: "2.8.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
@@ -18,6 +18,13 @@ metadata:
 - `verify` 必须从矩阵重新渲染并比较真实 PNG 像素及同环境确定性 PDF，不仅验证 PNG 文件的哈希。所有坐标从 1 连续编号到实际宽高，每个格子只能引用真实色卡。禁止用 OCR 或手工补几个乱码来挽救模型生成的假图纸。
 - 提交新肖像时只使用 `UNAPPROVED`，取得用户明确认可后才 `freeze`。用户一次要卡通和写实，应分别完成两套独立候选与校验，不能共享或虚构矩阵。交付链接必须指向本次已验收文件。
 - 旧版交付包没有重渲染校验，需从原有 MASTER 重新 `deliver` 到新目录；禁止更改 MASTER 或仅修改旧校验文件来通过。重渲染验收需使用相同代码、字体、Pillow 与 ReportLab 版本。环境不同则用可信 MASTER 在新环境重新导出。
+
+## v2.8 区域蒙版建议与局部肤色色阶精修（优先用于新肖像）
+
+- 用 `scripts/auto_regions.py propose --stage ... --grid ... --out ...` 生成本次底图的区域建议（可选 OpenCV 人脸位置检测 + 色彩/连通区域启发式；不是神经网络语义分割）。没有可靠单人定位时，使用 `--face X0 Y0 X1 Y1` 或 `--manual`，不猜测人脸。冷色照明或非自然肤色允许直接保留旧候选。
+- 必须实际检查 `overlay.png`，使用离线 `mask_editor.html` 修正皮肤、头发、衣服、背景和保护区，无法准确归类的地方保留 unknown。unknown 仅表示不施加该区域的专门色彩约束，并非整个格子锁定。眼睛、嘴角、耳饰、精细肩带等需设 protect。只读取本次底图，不复用旧照片蒙版。
+- 通过 `auto_regions.py accept` 导入**校对后的**原尺寸无抗锯齿标签 PNG，记录具体审核观察，产生绑定方形底图像素摘要、格数的 `reviewed_plan.json`。这仅表示区域审核，不表示顾客批准。`prepare --region-plan PATH` 启用 `finish` 和第七个 `tone` 候选，和 `--regions` 互斥。
+- `tone` 保持 `finish` 实际使用的全部色号，保护区域外、强边缘、皮肤边界与关键格；仅在已确认皮肤内部以同色卡邻格候选做保守精修。局部亮度/色度跳变误差不得增加，不增孤立格与皮肤区域色阶断裂，不突破全局与局部色差上限；否则返回与 finish 完全相同的矩阵。验证阶段重新计算该候选和诊断。任何指标都不代表审美或人脸相似度，仍须逐张观察。详见 [区域蒙版](references/AUTO_REGIONS.md)。
 
 ## v2.7 强制画质与施工可读性检查
 
@@ -36,7 +43,7 @@ python scripts/first_sheet.py prepare --mode photo --image original.jpg --grid 8
 
 **调用者不需要另写长提示词。** 听到“卡通版”“卡通拼豆图纸”“做成拼豆图纸”“再给我一个成品”且上下文是制作拼豆图纸，默认最终产物为顾客单页**有色号的施工图**。新肖像默认精致平涂卡通；用户明确要求写实才用 photo 模式。只有明确要求“卡通底图”“只要效果预览/实物模拟”才仅交付相应图。用户要改已确认图纸排版则优先使用 MASTER，不重新卡通化。
 
-### 新肖像的必经生产线（v2.7，首次使用先读这里）
+### 新肖像的必经生产线（v2.8，首次使用先读这里）
 
 1. 使用实际上传的原照片作为图像模型编辑参考。按 [首稿规范](references/FIRST_SHEET.md) 生成**无网格、无色号、无标题**的精致平涂卡通底图。必须用真正的图像生成/编辑模型或用户提供的卡通原稿；离线滤镜只能是用户明确选择的实验模式。没有图像工具和真实底图就说明缺口，不能偷偷改用滤镜，也不能伪造图纸。
 2. 运行首稿生产线（默认 87×87、最多 33 色；用户指定值优先）：
@@ -46,7 +53,7 @@ python scripts/first_sheet.py prepare --image original.jpg --cartoon-image carto
 ```
 
 3. **自己先检查** `review_comparison.png` 和候选大图。比较全部候选、参考原照片和已有基准。若造型不对、五官丢失、花饰/关键轮廓被切掉或存在明显噪声，重新生成卡通底图/候选并比较；最多两轮修正，不得无限重试。在仍不合格时明确说明失败，不把差稿当合格首稿。禁止仅依据像素 hash 宣称画质合格。
-4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail`、`flat`、`portrait`、`regional` 、`coherent` 或已生成的 `finish`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
+4. 复制 `visual_review_TEMPLATE.json` 为 `review.json`，选择实际通过视觉检查的 `detail`、`flat`、`portrait`、`regional` 、`coherent` 、已生成的 `finish` 或 `tone`，复制 `prepare.json` 中该候选 `codes_sha256`，保留 `comparison_sha256`，逐项填写真实检查结果和具体观察记录。不得批量默认填 true。执行：
 
 ```bash
 python scripts/first_sheet.py select --prepared ./review_v1 --variant flat --review ./review.json --name '卡通定制肖像' --out ./first_sheet
