@@ -35,6 +35,22 @@ def check_labels(labels):
         norm=[re.sub(r'[^a-z]','',str(x).lower()) for x in labels]
         require(len(norm)==6 and all(v in ALIASES[i] for i,v in enumerate(norm)), 'model labels do not match the official six-class selfie model')
 
+def confidence_mask_to_2d(mask):
+    """Normalize MediaPipe confidence-mask numpy views across API versions.
+
+    MediaPipe 0.10.35 may expose H×W×1 rather than H×W.  Only a trailing
+    singleton channel is accepted: indiscriminate squeeze can hide malformed
+    masks or produce unexpectedly shaped arrays.  Always detach the result
+    from the segmenter's native buffers before its context closes.
+    """
+    a = np.asarray(mask.numpy_view(), dtype=np.float32)
+    if a.ndim == 3 and a.shape[-1] == 1:
+        a = a[:, :, 0]
+    require(a.ndim == 2 and a.shape[0] >= 2 and a.shape[1] >= 2,
+            f'expected confidence mask (H, W) or (H, W, 1), got {a.shape}')
+    return np.array(a, dtype=np.float32, copy=True)
+
+
 def infer(stage,model,expected_sha):
     """Run MediaPipe CPU inference on the exact padded stage. No cloud calls."""
     sha=check_model(model,expected_sha)
@@ -47,7 +63,7 @@ def infer(stage,model,expected_sha):
             check_labels(model_labels)
             result=segmenter.segment(mp.Image(image_format=mp.ImageFormat.SRGB,data=np.ascontiguousarray(np.asarray(stage.convert('RGB')))))
             require(result.confidence_masks is not None and len(result.confidence_masks)==6,'expected exactly six model confidence maps')
-            maps=np.stack([np.array(m.numpy_view(),dtype=np.float32,copy=True) for m in result.confidence_masks])
+            maps=np.stack([confidence_mask_to_2d(m) for m in result.confidence_masks])
     except p.PatternError: raise
     except (RuntimeError,ValueError,AttributeError,TypeError,OSError) as exc: raise p.PatternError(f'MediaPipe inference failed: {exc}') from exc
     require(p.sha_file(Path(model))==sha,'model file changed during inference')

@@ -1,8 +1,12 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.9.0
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.9.1
+
+## v2.9.1 — 修复 MediaPipe 真实推理维度兼容性
+
+用户在 Windows / Python 3.14.3 / MediaPipe 0.10.35 运行真实模型时发现，六类置信度图可能返回 `(H,W,1)`，旧代码错误地组合成四维数组。现在严格兼容 `(H,W)` 与 `(H,W,1)` 并拒绝其他异常形状；保留人工审查、冻结 MASTER 和逐格校验规则。用户报告本地 9 项测试通过并输出区域叠加图；本项目环境尚未独立运行真实模型权重。
 
 ## v2.9 — 可选神经网络区域建议
 
-新增可选的 Google MediaPipe 六类语义分割模型入口，带置信度弃权、明确模型文件 SHA-256、蒙版校对和来源记录。权重不内置、不自动下载；本次尚未执行真实模型推理，不声称画质已提升。详见 [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md)。
+新增可选的 Google MediaPipe 六类语义分割模型入口，带置信度弃权、明确模型文件 SHA-256、蒙版校对和来源记录。权重不内置、不自动下载；v2.9 原开发环境未执行真实推理；之后已有用户在 Windows 实测运行成功，但画质提升仍待验证。详见 [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md)。
 
 ## v2.8：区域蒙版建议与局部色阶精修
 

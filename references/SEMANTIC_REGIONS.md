@@ -46,3 +46,13 @@ The accepted plan retains model/proposal/mask digests for traceability; this is 
 ## Validation status
 
 The probability projection, model file validation, mocked MediaPipe API integration, review gate and source binding are covered by tests. **Real model inference was not executed during v2.9 development because the runtime and weights were unavailable. No actual segmentation-accuracy or visual-improvement claim is made.** To run the additional real-runtime smoke test, set `PERLER_SELFIE_MODEL` and `PERLER_SELFIE_SHA256` to the local model and its hash, then run `python -m unittest discover -s tests -p test_semantic_regions.py -v`. This only confirms runtime compatibility, not photo-segmentation quality. Test representative photos and illustrations, inspect the masks, and compare actual output before adopting the optional backend in production.
+
+## v2.9.1 Windows / MediaPipe 0.10.35 compatibility
+
+A user-provided local test report (Windows, Python 3.14.3, MediaPipe 0.10.35) confirmed that confidence-mask `.numpy_view()` sometimes returns **`(H, W, 1)`** rather than `(H, W)`. Earlier `infer()` stacked six masks to a 4D tensor; `project()` correctly refused it. The fix explicitly converts `(H, W, 1)` to `(H, W)` while preserving ordinary 2D masks and rejecting other unexpected dimensions. This is intentionally narrower than indiscriminate `np.squeeze()`.
+
+The user reports nine semantic tests passing after patching and an 87×87 real-person overlay generated; the model SHA-256 in that report is `c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0`. This is **user-provided local evidence**, not independently reproduced by the project environment: actual model and weights remain unavailable here. It does not establish segmentation accuracy or better bead portrait quality.
+
+Important interpretation: the report's `model_mask_shape=[6,972,972]` is the post-normalization confidence map returned for the padded stage, not necessarily the model's native 256×256 tensor size. The report has 7,050 confident cells, 476 unknown and 612 protected out of 7,569; the number of labeled (non-unknown) cells may exceed `confidence_pass_cells` because the face-edge heuristic adds protection independently. Carefully review the overlay, especially contour boundaries and overprotected facial regions, before using any mask to change a bead candidate.
+
+Re-run on the same source photo and same target pixel grid to compare old/new customer sheets; the report's pictured outdoor portrait is **not the prior black-haired white-dress test portrait**, so it does not directly demonstrate an improvement on that earlier sample.

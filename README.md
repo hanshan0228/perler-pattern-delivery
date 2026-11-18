@@ -1,8 +1,12 @@
-# Perler Pattern Delivery Skill v2.9.0
+# Perler Pattern Delivery Skill v2.9.1
+
+## v2.9.1 — MediaPipe confidence-map shape compatibility
+
+Fixes a reported Windows / MediaPipe 0.10.35 real-inference failure: the confidence-map NumPy views may be `(H,W,1)` instead of `(H,W)`. The adapter now normalizes only that trailing singleton channel and rejects unexpected dimensions, with targeted API-mock regression tests. A user supplied evidence of a successful 9/9 local test run after a similar fix; neural weights/runtime are not available for independent inference in this environment. Visual quality still requires review.
 
 ## v2.9 — Optional neural region proposals
 
-Optional local MediaPipe SelfieMulticlass adapter adds six-class confidence-aware region proposals with abstention, explicit model SHA-256, and the existing mandatory mask review. No weight downloads or identity recognition; the real neural runtime has not yet been tested, so this is an opt-in integration, not a claim of improved portraits. See [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md).
+Optional local MediaPipe SelfieMulticlass adapter adds six-class confidence-aware region proposals with abstention, explicit model SHA-256, and the existing mandatory mask review. No weight downloads or identity recognition; the original v2.9 development had no real runtime test; a later user-reported Windows test ran successfully after the compatibility fix. This remains opt-in and is not proof of improved portraits. See [SEMANTIC_REGIONS.md](references/SEMANTIC_REGIONS.md).
 
 ## v2.8: Editable region proposals and local tone refinement
 

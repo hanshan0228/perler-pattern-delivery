@@ -1,3 +1,9 @@
+# v2.9.1 compatibility regression report
+
+- GitHub code regression identified via user-supplied local PDF: MediaPipe 0.10.35 may yield `numpy_view()` with shape `(H,W,1)`; original code rejected the resulting `(6,H,W,1)` maps. The report describes successful local 9/9 semantic tests on Windows Python 3.14.3 after an equivalent squeeze-based fix. We independently reproduced and tested the shape issue using a mocked MediaPipe API, not by downloading or running the model in this environment.
+- The v2.9.1 fix accepts precisely `(H,W)` or `(H,W,1)` maps and rejects extraneous dimensions. `project()` remains strict about six square channels.
+- The screenshot confirms that a six-class overlay was produced, but the overlay has visible blocky class boundaries and doesn't by itself demonstrate bead-chart visual improvement. Always conduct human review.
+
 # v2.9.0 test report
 
 - Full local suite: `python -m unittest discover -s tests -v` — 64 passed, 1 skipped, exit status 0 (74.292 s), 65 collected. The skipped test requires real MediaPipe model weights and runtime. Eight new focused tests passed with synthetic probability maps and a mocked MediaPipe interface; these do not validate neural model accuracy or compatibility with an actual runtime.

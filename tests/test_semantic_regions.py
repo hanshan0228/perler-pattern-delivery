@@ -51,6 +51,45 @@ class SemanticTests(unittest.TestCase):
             model=Path(d)/'x';model.write_bytes(b'1234TFL3mock')
             with patch.dict(sys.modules,{'mediapipe':mp}):result,meta=s.infer(self.stage,model,p.sha_file(model))
             self.assertTrue(np.array_equal(result,maps));self.assertEqual(meta['mediapipe_version'],'mock-test');self.assertTrue(meta['labels_metadata_checked'])
+    def test_mediapipe_singleton_channel_confidence_maps(self):
+        """Reproduces a real Windows MediaPipe 0.10.35 API shape (H, W, 1)."""
+        classes = self.maps
+        class FakeSegmenter:
+            labels=s.CLASS_NAMES
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def segment(self,image):
+                return types.SimpleNamespace(confidence_masks=[
+                    types.SimpleNamespace(numpy_view=lambda c=c:c[:, :, None])
+                    for c in classes])
+        mp=types.SimpleNamespace(
+            __version__='0.10.35',Image=lambda **kw:kw,
+            ImageFormat=types.SimpleNamespace(SRGB=1),
+            tasks=types.SimpleNamespace(BaseOptions=lambda **kw:kw,
+                vision=types.SimpleNamespace(ImageSegmenterOptions=lambda **kw:kw,
+                    RunningMode=types.SimpleNamespace(IMAGE=1),
+                    ImageSegmenter=types.SimpleNamespace(create_from_options=lambda x:FakeSegmenter()))))
+        with tempfile.TemporaryDirectory() as d:
+            model=Path(d)/'model.tflite';model.write_bytes(b'1234TFL3mock')
+            with patch.dict(sys.modules,{'mediapipe':mp}):
+                maps,meta=s.infer(self.stage,model,p.sha_file(model))
+        self.assertEqual(maps.shape,(6,32,32))
+        self.assertTrue(np.array_equal(maps,self.maps))
+        self.assertEqual(meta['mediapipe_version'],'0.10.35')
+        projected,_=s.project(self.stage,maps,16)
+        self.assertEqual(projected.shape,(16,16))
+
+    def test_confidence_mask_shape_rejects_extra_channels(self):
+        good=np.zeros((16,16,1),np.float32)
+        class Mock:
+            def __init__(self, a):self.arr=a
+            def numpy_view(self):return self.arr
+        self.assertEqual(s.confidence_mask_to_2d(Mock(good)).shape,(16,16))
+        self.assertEqual(s.confidence_mask_to_2d(Mock(good[:,:,0])).shape,(16,16))
+        for invalid in [np.zeros((16,16,2)),np.zeros((1,16,16)),np.zeros((16,16,1,1)),np.zeros((16,))]:
+            with self.subTest(shape=invalid.shape),self.assertRaises(p.PatternError):
+                s.confidence_mask_to_2d(Mock(invalid))
+
     def test_review_gate_and_provenance(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);source=root/'source.png';self.stage.save(source);proposal=root/'proposal';plan=root/'plan.json'

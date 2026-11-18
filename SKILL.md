@@ -4,10 +4,14 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.9.0"
+  version: "2.9.1"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
+
+## v2.9.1 MediaPipe 真实运行兼容修复
+
+媒体分割的单类置信度数组兼容 `(H,W)` 及 `(H,W,1)`，只移除最后一个单通道维度，其他异常形状直接报错。Windows Python 3.14.3 / MediaPipe 0.10.35 的真实运行已由用户本地报告验证，但在当前执行环境未独立复现模型推理；该报告不等于拼豆画质验收。所有神经分割蒙版仍必须人工检查，通过 `accept` 后才可影响待确认候选，绝不更改已冻结 MASTER。
 
 ## P0 最高优先级：最终施工图只能由程序绘制
 
