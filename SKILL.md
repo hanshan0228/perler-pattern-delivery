@@ -4,10 +4,27 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "2.9.1"
+  version: "3.0.0"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
+
+<!-- PERLER_IDENTITY_FIDELITY_V3 -->
+## P0：人物身份特征保真（v3.0，适用于新增人物肖像）
+
+**先验证人物像不像，后验证拼豆可施工。** 用户说“卡通拼豆图纸”时，先用无网格无文字的肖像卡通底图，禁止图片模型自由生成含色号的成品图。针对一张新照片：
+
+1. 原照片 → 卡通插画 → 程序根据真实 MARD 矩阵生成的纯像素预览，依次比较两次失真。每次都必须看 **实际拼豆大小**的脸型、眼形、鼻嘴比例、头发及姿态。
+2. 使用 `python scripts/identity_fidelity.py prepare --original PHOTO --cartoon CARTOON --bead PREVIEW --matrix MATRIX --palette PALETTE --out AUDIT_DIR` 制作三阶段对比图和来源哈希绑定报告。此命令会逐格验证预览，不能直接传入生成式模型画出来的“施工图”。
+3. 如本地具备合法的 MediaPipe Face Landmarker 模型，可分别运行 `identity_fidelity.py extract` 提取原照片、卡通底图和拼豆预览的关键点。几何偏差**不是身份识别或相似度百分比**；识别失败/模型缺失一律标记 `NOT_EVALUATED`，不得伪造分数。
+4. 提取到合法的拼豆关键点时，`bead_face_resolution_budget` 会提示眼距、嘴宽、脸宽与脸高分别占用的真实格数；门槛属于未经标定的构图预警，不是人脸身份认证。低于门槛时建议放大人物或增加网格，不能擅自忽略。
+5. **只有用户实际查看三阶段对比并明确确认相似度**，才能填写 `human_review_TEMPLATE.json`，执行 `identity_fidelity.py attest` 和 `freeze-reviewed`。助手不得自行替用户写“user_confirmed: true”；这项流程只记录用户确认，不能保证所有肖像相似。
+6. 得到冻结 MASTER 后，继续运行原有 `perler_delivery.py deliver` 与 `verify`。v2.9.1 的所有已确认矩阵、色卡和施工图渲染不得改动。
+
+详见 [人物相似度验收](references/IDENTITY_FIDELITY.md)、[卡通底图提示词](references/IDENTITY_PROMPT_TEMPLATE.md)。这部分可选使用本地模型；不捆绑权重，也不自动联网发送人脸。
+<!-- /PERLER_IDENTITY_FIDELITY_V3 -->
+
+
 
 ## v2.9.1 MediaPipe 真实运行兼容修复
 

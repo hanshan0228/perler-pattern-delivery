@@ -1,4 +1,10 @@
-# Perler Pattern Delivery Skill v2.9.1
+# Perler Pattern Delivery Skill v3.0.0
+
+## v3.0.0 — Identity fidelity and face resolution gate
+
+Added source-bound **photo → cartoon → verified bead** comparison with explicit human approval before `freeze-reviewed`. Optional local MediaPipe landmarks screen normalized facial geometry; a new bead-cell budget reports eye spacing, mouth width and face coverage. Neither metric is a validated similarity score; missing models remain NOT_EVALUATED. No model weights or portrait photos are committed.
+
+Read [identity fidelity workflow](references/IDENTITY_FIDELITY.md). Existing v2.9.1 color palette, approved examples, and rendering algorithms are unchanged.
 
 ## v2.9.1 — MediaPipe confidence-map shape compatibility
 

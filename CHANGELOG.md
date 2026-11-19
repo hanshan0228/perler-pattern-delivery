@@ -1,3 +1,11 @@
+## 3.0.0 — 2026-11-19
+
+- Introduced source-bound three-stage portrait fidelity audit and opt-in local Face Landmarker integration.
+- Added heuristic face-resolution budget in actual bead units, with explicit acknowledgment of low-resolution warnings.
+- Requires real user review before production `freeze-reviewed`; doesn't claim algorithmic face identity certainty.
+- Kept v2.9.1 code, palette, and immutable approved matrices unchanged.
+- Focused regression: 19 identity checks plus 21 relevant prior tests passed; full legacy suite timed out in large-document rendering.
+
 ## v2.9.1 — MediaPipe 0.10.35 confidence-mask dimension fix
 
 - Fix actual Windows/Python 3.14.3/MediaPipe 0.10.35 shape regression reported by a user: `Image.numpy_view()` confidence mask can be `(H, W, 1)` instead of `(H, W)`.

@@ -1,4 +1,10 @@
-# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v2.9.1
+# Perler Pattern Delivery · 拼豆图纸严格交付 Skill v3.0.0
+
+## v3.0.0 — 人物相似度优先
+
+新增**原照片 → 卡通底图 → 真实拼豆网格**三阶段核查。已确认拼豆矩阵逐格验证；可选本地 MediaPipe 关键点几何分析，并统计眼距、嘴宽、脸宽、脸高实际占用多少颗豆子。无模型或识别失败明确记录为未评估，绝不编造“95%相似度”。只能在用户实际看过图并确认后运行 `attest` / `freeze-reviewed`。所有旧 MASTER 与色卡、PDF 渲染完全保留。
+
+详见 [身份保真与像素预算说明](references/IDENTITY_FIDELITY.md)。
 
 ## v2.9.1 — 修复 MediaPipe 真实推理维度兼容性
 
