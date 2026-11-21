@@ -4,8 +4,24 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "3.0.1"
+  version: "3.0.2"
 ---
+
+<!-- LIKENESS_REVIEW_PACK_V302_BEGIN -->
+## v3.0.2 两阶段人物相似度审核（必须实际执行）
+
+当任务是将真人照片制作成卡通拼豆图纸时，在得到真实的矩阵 CSV、卡通底图、纯色拼豆预览后，
+必须运行 `scripts/likeness_review_pack.py prepare` 与 `verify`。
+审核图同时展示 A：原照片→卡通底图，以及 B：卡通底图→拼豆预览的面部局部与小尺寸查看效果。
+应为每张图单独标注归一化人脸框，或使用与图像 SHA-256 绑定的人脸关键点；未提供时明确写“未评估”。
+必须检查 1px/豆和 2px/豆的预览，尤其是眼形、鼻唇、下颌和神态。
+**模型不得自动将审核模板默认 false 改为 true，不能冒充真实用户确认。**
+本工具不产生未经验证的人脸相似度评分，不取代 `first_sheet.py select+verify`、
+`chart_release_gate.py` 或 `identity_fidelity.py freeze-reviewed`。
+如未确认人物像不像，应保持 UNAPPROVED 状态，不能把数据准确性误报成肖像保真。
+具体命令及使用限制见 [LIKENESS_REVIEW_PACK.md](references/LIKENESS_REVIEW_PACK.md)。
+<!-- LIKENESS_REVIEW_PACK_V302_END -->
+
 
 # 拼豆图纸标准交付（可执行 Skill）
 

@@ -1,5 +1,12 @@
 # Perler Pattern Delivery · 拼豆图纸严格交付 Skill v3.0.0
 
+## v3.0.2 — 两阶段人物相似度审核
+
+新增 `scripts/likeness_review_pack.py` 和本地安装脚本，可分别检查原照片→卡通底图、卡通底图→真实拼豆预览。
+包含按面部局部对比、1/2/4px每豆小尺寸预览和真实色号矩阵逐格验证；用户尚未确认时明确标记待审核。
+使用说明：[LIKENESS_REVIEW_PACK.md](references/LIKENESS_REVIEW_PACK.md)。旧 MASTER、MARD 色卡及施工图渲染保持不变。
+
+
 ## v3.0.1 — 严禁 AI 直画施工格子；独立逐格及 PDF 交付校验
 
 新增 `scripts/chart_release_gate.py` 与 [独立校验规则](references/RELEASE_GATE.md)。所有顾客图纸必须具有真实色号矩阵、固定 MARD 配色表、准确数量；正式交付时用 `--title` 重新绘制并逐像素比较整张 PNG，另核对 A2 和 A4 分板 PDF 内嵌图像。像素/图例数学准确不等于人物相似；仍需实际审查。安装 PDF 独立校验依赖：`pip install -r requirements-verification.txt`。

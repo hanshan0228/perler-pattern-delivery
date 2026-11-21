@@ -1,5 +1,13 @@
 ## 3.0.0 — 2026-11-19
 
+## 3.0.2 — 2026-11-21
+
+- Add two-stage human likeness review comparing real photo, AI cartoon, and verified bead pixels.
+- Add normalized manual/image-bound landmark face crops and pixel-size preview variants.
+- Add fail-closed source/palette/matrix/tampering checks, 10 synthetic tests and idempotent installer.
+- No user portraits or model weights committed; no changes to approved MASTER data.
+
+
 - Introduced source-bound three-stage portrait fidelity audit and opt-in local Face Landmarker integration.
 - Added heuristic face-resolution budget in actual bead units, with explicit acknowledgment of low-resolution warnings.
 - Requires real user review before production `freeze-reviewed`; doesn't claim algorithmic face identity certainty.

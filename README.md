@@ -1,5 +1,10 @@
 # Perler Pattern Delivery Skill v3.0.0
 
+## v3.0.2 — Two-stage portrait likeness review
+
+Adds `scripts/likeness_review_pack.py` and an idempotent installer: source→cartoon and cartoon→real bead-preview comparison, image-bound face ROI, 1/2/4 screen pixels per bead, and verified color grid. No uncalibrated face similarity score or fabricated user approval. See [documentation](references/LIKENESS_REVIEW_PACK.md).
+
+
 ## v3.0.1 — Strict chart release gate
 
 Adds `scripts/chart_release_gate.py` and [release checks](references/RELEASE_GATE.md). Customer pattern sheets must be rendered from a genuine color-code matrix (not AI-generated numbered artwork). Use `--title` for full pixel-by-pixel re-render verification of chart glyphs and axes, plus independent PDF image checks. This verifies craft data, **not** facial identity or aesthetic similarity. Optional audit dependencies: `pip install -r requirements-verification.txt`.
