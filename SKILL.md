@@ -4,10 +4,17 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "3.0.0"
+  version: "3.0.1"
 ---
 
 # 拼豆图纸标准交付（可执行 Skill）
+
+## v3.0.1 P0：真实矩阵与正式图纸独立验证
+
+**绝不把图像生成模型画出的色号网格当作施工图。** 图像模型只能生成无字的真人/卡通底图；实际施工图必须来自逐格 CSV/JSON 矩阵。交付时强制核对原子像素、每格 MARD 色号、所有坐标、图例颗数、A2 PNG/PDF 以及每页 A4 分板。
+
+执行 [独立交付检查](references/RELEASE_GATE.md) 中的 `scripts/chart_release_gate.py`。正式顾客交付应传入正确的 `--title`，以逐像素**重绘整张图**并比较色号字符、坐标轴和图例。无矩阵、无图例、检查失败、图片模型假图，均不得标记为可施工。新图默认 UNAPPROVED；身份相似度必须另行视觉审核，不能用数学数据校验替代。
+
 
 <!-- PERLER_IDENTITY_FIDELITY_V3 -->
 ## P0：人物身份特征保真（v3.0，适用于新增人物肖像）

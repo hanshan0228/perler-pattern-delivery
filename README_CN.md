@@ -1,5 +1,10 @@
 # Perler Pattern Delivery · 拼豆图纸严格交付 Skill v3.0.0
 
+## v3.0.1 — 严禁 AI 直画施工格子；独立逐格及 PDF 交付校验
+
+新增 `scripts/chart_release_gate.py` 与 [独立校验规则](references/RELEASE_GATE.md)。所有顾客图纸必须具有真实色号矩阵、固定 MARD 配色表、准确数量；正式交付时用 `--title` 重新绘制并逐像素比较整张 PNG，另核对 A2 和 A4 分板 PDF 内嵌图像。像素/图例数学准确不等于人物相似；仍需实际审查。安装 PDF 独立校验依赖：`pip install -r requirements-verification.txt`。
+
+
 ## v3.0.0 — 人物相似度优先
 
 新增**原照片 → 卡通底图 → 真实拼豆网格**三阶段核查。已确认拼豆矩阵逐格验证；可选本地 MediaPipe 关键点几何分析，并统计眼距、嘴宽、脸宽、脸高实际占用多少颗豆子。无模型或识别失败明确记录为未评估，绝不编造“95%相似度”。只能在用户实际看过图并确认后运行 `attest` / `freeze-reviewed`。所有旧 MASTER 与色卡、PDF 渲染完全保留。

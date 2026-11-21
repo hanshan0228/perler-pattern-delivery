@@ -1,5 +1,10 @@
 # Perler Pattern Delivery Skill v3.0.0
 
+## v3.0.1 — Strict chart release gate
+
+Adds `scripts/chart_release_gate.py` and [release checks](references/RELEASE_GATE.md). Customer pattern sheets must be rendered from a genuine color-code matrix (not AI-generated numbered artwork). Use `--title` for full pixel-by-pixel re-render verification of chart glyphs and axes, plus independent PDF image checks. This verifies craft data, **not** facial identity or aesthetic similarity. Optional audit dependencies: `pip install -r requirements-verification.txt`.
+
+
 ## v3.0.0 — Identity fidelity and face resolution gate
 
 Added source-bound **photo → cartoon → verified bead** comparison with explicit human approval before `freeze-reviewed`. Optional local MediaPipe landmarks screen normalized facial geometry; a new bead-cell budget reports eye spacing, mouth width and face coverage. Neither metric is a validated similarity score; missing models remain NOT_EVALUATED. No model weights or portrait photos are committed.
