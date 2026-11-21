@@ -1,3 +1,11 @@
+## v3.0.3 — Identity-first candidate framing and comparison
+
+- Add verified, SHA-bound face-first framing candidates with explicit face ROI and estimated facial bead-cell budget.
+- Add deterministic, source-bound multi-candidate comparison on a single grid size; check each candidate's real MARD matrix and pure pixel preview.
+- Detect artifact swaps, altered manifests and rehashed/tampered contact sheets by regenerating output pixels.
+- Preserve existing MASTER/delivery code; never automatically approve portraits, score identity, or ship client photos in the repository.
+- Add 12 targeted regression tests and a reproducible private-image demonstration.
+
 ## 3.0.0 — 2026-11-19
 
 ## 3.0.2 — 2026-11-21

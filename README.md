@@ -1,5 +1,10 @@
 # Perler Pattern Delivery Skill v3.0.0
 
+## v3.0.3 — Identity-first composition and candidate comparisons
+
+New `scripts/identity_candidate_pipeline.py` performs SHA-bound face-first framing and **same-grid** candidate comparisons backed by actual MARD matrices. It never generates face-identification scores or approves a customer portrait; manually supplied face boxes are explicitly marked as such. See [`references/IDENTITY_CANDIDATES.md`](references/IDENTITY_CANDIDATES.md).
+
+
 ## v3.0.2 — Two-stage portrait likeness review
 
 Adds `scripts/likeness_review_pack.py` and an idempotent installer: source→cartoon and cartoon→real bead-preview comparison, image-bound face ROI, 1/2/4 screen pixels per bead, and verified color grid. No uncalibrated face similarity score or fabricated user approval. See [documentation](references/LIKENESS_REVIEW_PACK.md).

@@ -1,5 +1,10 @@
 # Perler Pattern Delivery · 拼豆图纸严格交付 Skill v3.0.0
 
+## v3.0.3 — 身份保真候选对比
+
+这次新增 `scripts/identity_candidate_pipeline.py`：支持按手动脸框或真实 SHA 绑定的关键点生成可追溯的面部优先构图，并对同格数、真实 MARD 色号矩阵的多张候选进行并排审查。两张从同一张 AI 图裁剪的候选会保留相同艺术来源指纹，不冒充不同模型生成。人物相似度必须用户判断，程序不输出未校准的人脸相似百分比。详见 [`references/IDENTITY_CANDIDATES.md`](references/IDENTITY_CANDIDATES.md)。
+
+
 ## v3.0.2 — 两阶段人物相似度审核
 
 新增 `scripts/likeness_review_pack.py` 和本地安装脚本，可分别检查原照片→卡通底图、卡通底图→真实拼豆预览。

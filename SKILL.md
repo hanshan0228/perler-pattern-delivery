@@ -4,8 +4,18 @@ description: "Use for 拼豆图纸、真人照片转卡通拼豆、AI cartoon mo
 license: MIT
 compatibility: "Python 3.9+; Pillow, NumPy for photo generation; ReportLab for PDFs; macOS, Linux, Windows"
 metadata:
-  version: "3.0.2"
+  version: "3.0.3"
 ---
+
+## v3.0.3：身份优先构图与多候选实际比对（新增）
+
+- 先用当前原图及真正的图像生成/编辑模型生成不含网格的卡通底图。禁止将纯滤镜、直接绘制的假色号网格冒充施工图。
+- 对原图、各卡通底图分别使用 `scripts/identity_candidate_pipeline.py frame` 加载真实手工脸框或图片 SHA 绑定的有效关键点，先审阅构图和 `framing_debug.png`，再用现有 `first_sheet.py prepare` 生成新候选矩阵。
+- 使用 `identity_candidate_pipeline.py compare` 比较2~5个**同分辨率、使用固定MARD色卡、纯色预览可逐格验证**的候选；不同裁切若源于同一艺术底图，必须在 `art_source` 记录同一来源。
+- 构图中的脸高格数只是几何预算，**不是人物身份相似度或画质评分**。无真实脸框/关键点、不合格五官、未取得用户确认，仍是 `HUMAN_COMPARISON_REQUIRED`，禁止冻结 MASTER。
+- 施工图必须继续经过 `first_sheet.py select/verify` 和独立验收；新模块不修改已有 MASTER、色卡或 PDF 渲染。
+- 详细命令与示例见 [身份保真候选规范](references/IDENTITY_CANDIDATES.md)。
+
 
 <!-- LIKENESS_REVIEW_PACK_V302_BEGIN -->
 ## v3.0.2 两阶段人物相似度审核（必须实际执行）
